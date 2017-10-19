@@ -544,7 +544,7 @@ class Environment:
         for compiler in compilers:
             if isinstance(compiler, str):
                 compiler = [compiler]
-            if not set(['cl', 'cl.exe', 'clang-cl', 'clang-cl.exe']).isdisjoint(compiler):
+            if not set(['cl', 'cl.exe', 'clang-cl', 'clang-cl.exe', 'icl', 'icl.exe']).isdisjoint(compiler):
                 # Watcom C provides it's own cl.exe clone that mimics an older
                 # version of Microsoft's compiler. Since Watcom's cl.exe is
                 # just a wrapper, we skip using it if we detect its presence
