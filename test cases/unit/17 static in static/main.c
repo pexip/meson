@@ -1,7 +1,8 @@
 #include <stdio.h>
-#include "ego.h"
+#include "iam.h"
+#include "thebest.h"
 
 int main(int argc, char **argv) {
-    ego_msg();
+    printf ("%s %s", i_am(), the_best());
     return 0;
 }
