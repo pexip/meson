@@ -2603,6 +2603,14 @@ external dependencies (including libraries) must go to "dependencies".''')
                 raise InterpreterException('Program or command {!r} not found '
                                            'or not executable'.format(cmd))
             cmd = prog
+        #cmd_path = mesonlib.relpath(cmd.get_path(), start=srcdir)
+        #if not cmd_path.startswith('..'):
+            # On Windows, program on a different drive than srcdir won't have
+            # an expressible relative path; cmd_path will be absolute instead.
+        #    if not os.path.isabs(cmd_path):
+        #        if cmd_path not in self.build_def_files:
+        #            self.build_def_files.append(cmd_path)
+        expanded_args = []
         for a in listify(cargs):
             if isinstance(a, str):
                 expanded_args.append(a)
@@ -2939,10 +2947,10 @@ external dependencies (including libraries) must go to "dependencies".''')
                 raise InterpreterException('Subproject_dir must be a string')
             if os.path.isabs(spdirname):
                 raise InterpreterException('Subproject_dir must not be an absolute path.')
-            if spdirname.startswith('.'):
-                raise InterpreterException('Subproject_dir must not begin with a period.')
-            if '..' in spdirname:
-                raise InterpreterException('Subproject_dir must not contain a ".." segment.')
+            #if spdirname.startswith('.'):
+            #    raise InterpreterException('Subproject_dir must not begin with a period.')
+            #if '..' in spdirname:
+            #    raise InterpreterException('Subproject_dir must not contain a ".." segment.')
             self.subproject_dir = spdirname
 
         self.build.subproject_dir = self.subproject_dir
@@ -4389,7 +4397,7 @@ Try setting b_lundef to false instead.'''.format(self.coredata.base_options['b_s
         subproj_name = ''
         segs = PurePath(path_from_source_root).parts
         segs_spd = PurePath(subproject_dirname).parts
-        while segs and segs[0] == segs_spd[0]:
+        while segs and segs_spd and segs[0] == segs_spd[0]:
             if len(segs_spd) == 1:
                 subproj_name = segs[1]
                 segs = segs[2:]
@@ -4423,7 +4431,7 @@ Try setting b_lundef to false instead.'''.format(self.coredata.base_options['b_s
         (num_sps, sproj_name) = self.evaluate_subproject_info(norm, self.subproject_dir)
         plain_filename = os.path.basename(norm)
         if num_sps == 0:
-            if not self.is_subproject():
+            if not self.is_subproject() or self.subproject_dir == '.':
                 return
             raise InterpreterException('Sandbox violation: Tried to grab file %s from a different subproject.' % plain_filename)
         if num_sps > 1:
