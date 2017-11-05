@@ -1095,10 +1095,10 @@ external dependencies (including libraries) must go to "dependencies".''')
                 raise InterpreterException('Subproject_dir must be a string')
             if os.path.isabs(spdirname):
                 raise InterpreterException('Subproject_dir must not be an absolute path.')
-            if spdirname.startswith('.'):
-                raise InterpreterException('Subproject_dir must not begin with a period.')
-            if '..' in spdirname:
-                raise InterpreterException('Subproject_dir must not contain a ".." segment.')
+            #if spdirname.startswith('.'):
+            #    raise InterpreterException('Subproject_dir must not begin with a period.')
+            #if '..' in spdirname:
+            #    raise InterpreterException('Subproject_dir must not contain a ".." segment.')
             if not self.is_subproject():
                 self.subproject_dir = spdirname
         else:
@@ -2541,8 +2541,8 @@ Try setting b_lundef to false instead.'''.format(self.coredata.options[OptionKey
             return
         if project_root not in norm.parents:
             raise InterpreterException(f'Sandbox violation: Tried to grab {inputtype} {norm.name} outside current (sub)project.')
-        if project_root / self.subproject_dir in norm.parents:
-            raise InterpreterException(f'Sandbox violation: Tried to grab {inputtype} {norm.name} from a nested subproject.')
+        #if project_root / self.subproject_dir in norm.parents:
+        #    raise InterpreterException(f'Sandbox violation: Tried to grab {inputtype} {norm.name} from a nested subproject.')
 
     @T.overload
     def source_strings_to_files(self, sources: T.List['mesonlib.FileOrString']) -> T.List['mesonlib.File']: ...
