@@ -1669,9 +1669,9 @@ external dependencies (including libraries) must go to "dependencies".''')
                 raise InterpreterException('Program or command {!r} not found'
                                            'or not executable'.format(cmd))
             cmd = prog
-        cmd_path = os.path.relpath(cmd.get_path(), start=srcdir)
-        if not cmd_path.startswith('..') and cmd_path not in self.build_def_files:
-            self.build_def_files.append(cmd_path)
+        #cmd_path = os.path.relpath(cmd.get_path(), start=srcdir)
+        #if not cmd_path.startswith('..') and cmd_path not in self.build_def_files:
+        #    self.build_def_files.append(cmd_path)
         expanded_args = []
         for a in listify(cargs):
             if isinstance(a, str):
@@ -1875,8 +1875,8 @@ to directly access options of other subprojects.''')
             spdirname = kwargs['subproject_dir']
             if '/' in spdirname or '\\' in spdirname:
                 raise InterpreterException('Subproject_dir must not contain a path segment.')
-            if spdirname.startswith('.'):
-                raise InterpreterException('Subproject_dir must not begin with a period.')
+            #if spdirname.startswith('.'):
+            #    raise InterpreterException('Subproject_dir must not begin with a period.')
             self.subproject_dir = spdirname
 
         if 'meson_version' in kwargs:
@@ -2914,7 +2914,7 @@ different subdirectory.
         (num_sps, sproj_name) = self.evaluate_subproject_info(norm, self.subproject_dir)
         plain_filename = os.path.split(norm)[-1]
         if num_sps == 0:
-            if self.subproject == '':
+            if self.subproject == '' or self.subproject_dir == '.':
                 return
             raise InterpreterException('Sandbox violation: Tried to grab file %s from a different subproject.' % plain_filename)
         if num_sps > 1:
