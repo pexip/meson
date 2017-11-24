@@ -231,6 +231,7 @@ permitted_dependency_kwargs = {
     'required',
     'static',
     'version',
+    'prefix',
 }
 
 class Interpreter(InterpreterBase, HoldableObject):
