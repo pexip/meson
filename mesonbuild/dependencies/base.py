@@ -82,7 +82,7 @@ class Dependency:
             raise DependencyException(
                 'Unsupported detection method: {}, allowed methods are {}'.format(
                     method.value,
-                    mlog.format_list(map(lambda x: x.value, [DependencyMethods.AUTO] + self.get_methods()))))
+                    mlog.format_list(list(map(lambda x: x.value, [DependencyMethods.AUTO] + self.get_methods())))))
 
     def __repr__(self):
         s = '<{0} {1}: {2}>'
