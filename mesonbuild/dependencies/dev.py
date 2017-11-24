@@ -51,7 +51,11 @@ class GTestDependencySystem(ExternalDependency):
     def __init__(self, name: str, environment, kwargs):
         super().__init__(name, environment, kwargs, language='cpp')
         self.main = kwargs.get('main', False)
-        self.src_dirs = ['/usr/src/gtest/src', '/usr/src/googletest/googletest/src']
+        self.prefix = kwargs.get('prefix', None)
+        prefix = self.prefix if self.prefix is not None else '/usr'
+        self.src_dirs = [
+            os.path.join(prefix, 'src/gtest/src'),
+            os.path.join(prefix, 'src/googletest/googletest/src')]
         if not self._add_sub_dependency(threads_factory(environment, self.for_machine, {})):
             self.is_found = False
             return
@@ -91,6 +95,9 @@ class GTestDependencySystem(ExternalDependency):
                 self.src_include_dirs = [os.path.normpath(os.path.join(self.src_dir, '..')),
                                          os.path.normpath(os.path.join(self.src_dir, '../include')),
                                          ]
+                if self.prefix is not None:
+                    self.src_include_dirs.append(
+                        os.path.normpath(os.path.join(self.prefix, 'include')))
                 return True
         return False
 
