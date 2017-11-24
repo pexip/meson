@@ -254,6 +254,7 @@ permitted_dependency_kwargs = {
     'required',
     'static',
     'version',
+    'prefix',
 }
 
 implicit_check_false_warning = """You should add the boolean check kwarg to the run_command call.
