@@ -563,6 +563,10 @@ class GnomeModule(ExtensionModule):
                                                                             use_gir_args=True)
         cflags += list(dep_cflags)
         ldflags += list(dep_ldflags)
+
+        # g-ir-scanner only supports -D, -I and -U:
+        cflags = [flag for flag in cflags if flag.startswith('-D') or flag.startswith('-I') or flag.startswith('-U')]
+
         scan_command += ['--cflags-begin']
         scan_command += cflags
         scan_command += ['--cflags-end']
