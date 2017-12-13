@@ -1148,7 +1148,10 @@ class IntelCompiler:
         self.icc_type = icc_type
         self.lang_header = 'none'
         self.base_options = ['b_pch', 'b_lto', 'b_pgo', 'b_sanitize', 'b_coverage',
-                             'b_colorout', 'b_ndebug', 'b_staticpic', 'b_lundef', 'b_asneeded']
+                             'b_colorout', 'b_ndebug', 'b_staticpic']
+        if not icc_type == ICC_OSX:
+            self.base_options += ['b_lundef', 'b_asneeded']
+
         # Assembly
         self.can_compile_suffixes.add('s')
 
@@ -1159,6 +1162,8 @@ class IntelCompiler:
         return gnulike_buildtype_args[buildtype]
 
     def get_buildtype_linker_args(self, buildtype):
+        if self.icc_type == ICC_OSX:
+            return apple_buildtype_linker_args[buildtype]
         return gnulike_buildtype_linker_args[buildtype]
 
     def get_pch_suffix(self):
