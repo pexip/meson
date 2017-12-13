@@ -30,6 +30,7 @@ from .compilers import (
     GCC_OSX,
     GCC_STANDARD,
     ICC_STANDARD,
+    ICC_OSX,
     is_assembly,
     is_header,
     is_library,
@@ -575,8 +576,11 @@ class Environment:
                 cls = VisualStudioCCompiler if lang == 'c' else VisualStudioCPPCompiler
                 return cls(compiler, version, is_cross, exe_wrap, is_64)
             if '(ICC)' in out:
-                # TODO: add microsoft add check OSX
+                # TODO: add microsoft
                 inteltype = ICC_STANDARD
+                if 'Apple' in out or mesonlib.for_darwin(want_cross, self):
+                    inteltype = ICC_OSX
+
                 cls = IntelCCompiler if lang == 'c' else IntelCPPCompiler
                 return cls(ccache + compiler, version, inteltype, is_cross, exe_wrap, full_version=full_version)
             if 'ARM' in out:
