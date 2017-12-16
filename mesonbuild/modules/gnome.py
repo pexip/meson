@@ -567,6 +567,9 @@ class GnomeModule(ExtensionModule):
         # g-ir-scanner only supports -D, -I and -U:
         cflags = [flag for flag in cflags if flag.startswith('-D') or flag.startswith('-I') or flag.startswith('-U')]
 
+        # and we only allow -L and --extra-library for ldflags
+        ldflags = [flag for flag in ldflags if flag.startswith('-L') or flag.startswith('--extra-library')]
+
         scan_command += ['--cflags-begin']
         scan_command += cflags
         scan_command += ['--cflags-end']
