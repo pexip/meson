@@ -236,7 +236,7 @@ class IntelCCompiler(IntelGnuLikeCompiler, CCompiler):
         CCompiler.__init__(self, exelist, version, for_machine, is_cross, exe_wrapper, **kwargs)
         IntelGnuLikeCompiler.__init__(self, compiler_type)
         self.lang_header = 'c-header'
-        default_warn_args = ['-Wall', '-w3', '-diag-disable:remark']
+        default_warn_args = ['-Wall', '-w3']
         self.warn_args = {'0': [],
                           '1': default_warn_args,
                           '2': default_warn_args + ['-Wextra'],
