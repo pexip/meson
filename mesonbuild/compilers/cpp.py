@@ -257,7 +257,7 @@ class IntelCPPCompiler(IntelCompiler, CPPCompiler):
         CPPCompiler.__init__(self, exelist, version, is_cross, exe_wrap, **kwargs)
         IntelCompiler.__init__(self, compiler_type)
         self.lang_header = 'c++-header'
-        default_warn_args = ['-Wall', '-w3', '-diag-disable:remark',
+        default_warn_args = ['-Wall', '-w3',
                              '-Wpch-messages', '-Wnon-virtual-dtor']
         self.warn_args = {'1': default_warn_args,
                           '2': default_warn_args + ['-Wextra'],
