@@ -389,7 +389,7 @@ class GnomeModule(ExtensionModule):
     @permittedKwargs({'sources', 'nsversion', 'namespace', 'symbol_prefix', 'identifier_prefix',
                       'export_packages', 'includes', 'dependencies', 'link_with', 'include_directories',
                       'install', 'install_dir_gir', 'install_dir_typelib', 'extra_args',
-                      'packages', 'header', 'build_by_default'})
+                      'packages', 'header', 'build_by_default', 'gir_dep'})
     def generate_gir(self, state, args, kwargs):
         if len(args) != 1:
             raise MesonException('Gir takes one argument')
@@ -402,12 +402,17 @@ class GnomeModule(ExtensionModule):
             girtarget = girtarget.held_object
         if not isinstance(girtarget, (build.Executable, build.SharedLibrary)):
             raise MesonException('Gir target must be an executable or shared library')
+        gir_dep = kwargs.pop('gir_dep', None) or self.gir_dep
+
         try:
-            if not self.gir_dep:
+            if gir_dep == None:
                 self.gir_dep = PkgConfigDependency('gobject-introspection-1.0',
                                                    state.environment,
                                                    {'native': True})
-            pkgargs = self.gir_dep.get_compile_args()
+                gir_dep = self.gir_dep
+            while hasattr(gir_dep, 'held_object'):
+                gir_dep = gir_dep.held_object
+            pkgargs = gir_dep.get_compile_args()
         except Exception:
             raise MesonException('gobject-introspection dependency was not found, gir cannot be generated.')
         ns = kwargs.pop('namespace')
