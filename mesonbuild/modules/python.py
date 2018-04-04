@@ -34,7 +34,7 @@ from ..dependencies.base import (
 
 mod_kwargs = set(['subdir'])
 mod_kwargs.update(shlib_kwargs)
-mod_kwargs -= set(['install_dir', 'install_rpath'])
+mod_kwargs -= set(['install_rpath'])
 
 
 def run_command(python, command):
@@ -53,7 +53,7 @@ class PythonDependency(ExternalDependency):
         self.version = python_holder.version
         self.platform = python_holder.platform
         self.pkgdep = None
-        self.variables = python_holder.variables
+        self.config_vars = python_holder.config_vars
         self.paths = python_holder.paths
 
         if DependencyMethods.PKGCONFIG in self.methods:
@@ -85,7 +85,7 @@ class PythonDependency(ExternalDependency):
 
     def get_windows_python_arch(self):
         if self.platform == 'mingw':
-            pycc = self.variables.get('CC')
+            pycc = self.config_vars.get('CC')
             if pycc.startswith('x86_64'):
                 return '64'
             elif pycc.startswith(('i686', 'i386')):
@@ -103,18 +103,18 @@ class PythonDependency(ExternalDependency):
 
     def get_windows_link_args(self):
         if self.platform.startswith('win'):
-            vernum = self.variables.get('py_version_nodot')
+            vernum = self.config_vars.get('py_version_nodot')
             if self.static:
                 libname = 'libpython{}.a'.format(vernum)
             else:
                 libname = 'python{}.lib'.format(vernum)
-            lib = Path(self.variables.get('base')) / 'libs' / libname
+            lib = Path(self.config_vars.get('base')) / 'libs' / libname
         elif self.platform == 'mingw':
             if self.static:
-                libname = self.variables.get('LIBRARY')
+                libname = self.config_vars.get('LIBRARY')
             else:
-                libname = self.variables.get('LDLIBRARY')
-            lib = Path(self.variables.get('LIBDIR')) / libname
+                libname = self.config_vars.get('LDLIBRARY')
+            lib = Path(self.config_vars.get('LIBDIR')) / libname
         if not lib.exists():
             mlog.log('Could not find Python3 library {!r}'.format(str(lib)))
             return None
@@ -182,10 +182,11 @@ class PythonHolder(ExternalProgramHolder, InterpreterObject):
         ExternalProgramHolder.__init__(self, python)
         self.interpreter = interpreter
         prefix = self.interpreter.environment.coredata.get_builtin_option('prefix')
-        self.variables = eval(run_command(python, "import sysconfig; print (repr(sysconfig.get_config_vars()))"))
+
+        self.config_vars = eval(run_command(python, "import sysconfig; print (repr(sysconfig.get_config_vars()))"))
         self.paths = eval(run_command(python, "import sysconfig; print (repr(sysconfig.get_paths()))"))
         install_paths = eval(run_command(python, "import sysconfig; print (repr(sysconfig.get_paths("
-            "vars={'base': '', 'platbase': '', 'installed_base': ''})))"))
+            "scheme='posix_prefix', vars={'base': '', 'platbase': '', 'installed_base': ''})))"))
         self.platlib_install_path = os.path.join(prefix, install_paths['platlib'][1:])
         self.purelib_install_path = os.path.join(prefix, install_paths['purelib'][1:])
         self.version = run_command(python, "import sysconfig; print (sysconfig.get_python_version())")
@@ -198,13 +199,13 @@ class PythonHolder(ExternalProgramHolder, InterpreterObject):
         if 'name_suffix' in kwargs:
             raise mesonlib.MesonException('Name_suffix is set automatically, specifying it is forbidden.')
 
-        subdir = kwargs.pop('subdir', '')
-        if not isinstance(subdir, str):
-            raise InvalidArguments('"subdir" argument must be a string.')
+        if not 'install_dir' in kwargs:
+            subdir = kwargs.pop('subdir', '')
+            if not isinstance(subdir, str):
+                raise InvalidArguments('"subdir" argument must be a string.')
+            kwargs['install_dir'] = os.path.join(self.platlib_install_path, subdir)
 
-        kwargs['install_dir'] = os.path.join(self.platlib_install_path, subdir)
-
-        suffix = self.variables.get('EXT_SUFFIX') or self.variables.get('SO') or self.variables.get('.so')
+        suffix = self.config_vars.get('EXT_SUFFIX') or self.config_vars.get('SO') or self.config_vars.get('.so')
 
         kwargs['name_prefix'] = ''
         # Strip the leading dot
@@ -261,6 +262,13 @@ class PythonHolder(ExternalProgramHolder, InterpreterObject):
     def found(self, node, args, kwargs):
         return ModuleReturnValue(True, [])
 
+    @noKwargs
+    def get_config_var(self, node, args, kwargs):
+        var_name = args[0]
+        if not var_name:
+            raise InvalidArguments('must specify a key')
+        return ModuleReturnValue(self.config_vars.get(var_name, ''), [])
+
     def method_call(self, method_name, args, kwargs):
         try:
             fn = getattr(self, method_name)
@@ -280,6 +288,18 @@ class PythonModule(ExtensionModule):
         super().__init__()
         self.snippets.add('find')
 
+    def _get_win_pythonpath(self, name_or_path):
+        if not name_or_path in ['python2', 'python3']:
+            return None
+        ver = {'python2': '-2', 'python3': '-3'}[name_or_path]
+        cmd = ['py', ver, '-c', "import sysconfig; print(sysconfig.get_config_var('BINDIR'))"]
+        _, stdout, _ = mesonlib.Popen_safe(cmd)
+        dir = stdout.strip()
+        if os.path.exists(dir):
+            return os.path.join(dir, 'python')
+        else:
+            return None
+
     @permittedSnippetKwargs(['required'])
     def find(self, interpreter, state, args, kwargs):
         required = kwargs.get('required', True)
@@ -290,6 +310,11 @@ class PythonModule(ExtensionModule):
         if not name_or_path:
             python = ExternalProgram('python3', mesonlib.python_command, silent=True)
         else:
+            if mesonlib.is_windows():
+                pythonpath = self._get_win_pythonpath(name_or_path)
+                if pythonpath is not None:
+                    name_or_path = pythonpath
+
             python = ExternalProgram(name_or_path, silent = True)
             # Last ditch effort, python2 or python3 can be named python
             # on various platforms, let's not give up just yet, if an executable
