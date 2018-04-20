@@ -147,8 +147,8 @@ def run_script_command(script_name, script_args):
         return 1
 
 def run(original_args, mainfile):
-    if sys.version_info < (3, 5):
-        print('Meson works correctly only with python 3.5+.')
+    if sys.version_info < (3, 4):
+        print('Meson works correctly only with python 3.4+.')
         print('You have python %s.' % sys.version)
         print('Please update your environment')
         return 1
