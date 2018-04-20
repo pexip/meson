@@ -80,7 +80,7 @@ install:
   - ps: DownloadFile -Source 'https://github.com/mesonbuild/cidata/raw/master/ninja.exe' -Destination 'C:\projects\meson\ninja.exe'
   # Use the x86 python only when building for x86 for the cpython tests.
   # For all other archs (including, say, arm), use the x64 python.
-  - cmd: if %arch%==x86 (set MESON_PYTHON_PATH=C:\python35) else (set MESON_PYTHON_PATH=C:\python35-x64)
+  - cmd: if %arch%==x86 (set MESON_PYTHON_PATH=C:\python34) else (set MESON_PYTHON_PATH=C:\python34-x64)
 
   # Skip CI requires python
   - cmd: python ./skip_ci.py --base-branch-env=APPVEYOR_REPO_BRANCH --is-pull-env=APPVEYOR_PULL_REQUEST_NUMBER
