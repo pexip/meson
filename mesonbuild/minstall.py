@@ -305,8 +305,8 @@ class Installer:
             if shutil.which('pkexec') is not None and 'PKEXEC_UID' not in os.environ:
                 print('Installation failed due to insufficient permissions.')
                 print('Attempting to use polkit to gain elevated privileges...')
-                os.execlp('pkexec', 'pkexec', sys.executable, main_file, *sys.argv[1:],
-                          '-C', os.getcwd())
+                args = sys.argv[1:] + ['-C', os.getcwd()]
+                os.execlp('pkexec', 'pkexec', sys.executable, main_file, *args)
             else:
                 raise
 
