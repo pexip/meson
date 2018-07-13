@@ -580,8 +580,17 @@ class GnomeModule(ExtensionModule):
         dep_cflags, dep_internal_ldflags, dep_external_ldflags, gi_includes = \
             self._get_dependencies_flags(deps, state, depends, use_gir_args=True)
         cflags += list(dep_cflags)
+
+        # g-ir-scanner only supports -D, -I and -U:
+        cflags = [flag for flag in cflags if flag.startswith('-D') or flag.startswith('-I') or flag.startswith('-U')]
+
         internal_ldflags += list(dep_internal_ldflags)
         external_ldflags += list(dep_external_ldflags)
+
+        # and we only allow -L and --extra-library for ldflags
+        internal_ldflags = [flag for flag in internal_ldflags if flag.startswith('-L') or flag.startswith('--extra-library')]
+        external_ldflags = [flag for flag in external_ldflags if flag.startswith('-L') or flag.startswith('--extra-library')]
+
         scan_command += ['--cflags-begin']
         scan_command += cflags
         scan_command += state.environment.coredata.get_external_args(lang)
