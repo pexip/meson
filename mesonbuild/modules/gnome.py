@@ -780,6 +780,12 @@ class GnomeModule(ExtensionModule):
         girtargets_inc_dirs = self._get_gir_targets_inc_dirs(girtargets)
         inc_dirs = self._scan_inc_dirs(kwargs)
 
+        # g-ir-scanner only supports -D, -I and -U:
+        cflags = [flag for flag in cflags if flag.startswith('-D') or flag.startswith('-I') or flag.startswith('-U')]
+        # and we only allow -L and --extra-library for ldflags
+        internal_ldflags = [flag for flag in internal_ldflags if flag.startswith('-L') or flag.startswith('--extra-library')]
+        external_ldflags = [flag for flag in external_ldflags if flag.startswith('-L') or flag.startswith('--extra-library')]
+
         scan_command = [giscanner]
         scan_command += pkgargs
         scan_command += ['--no-libtool']
