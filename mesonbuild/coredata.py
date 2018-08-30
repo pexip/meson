@@ -478,7 +478,7 @@ def filter_builtin_options(args, original_args):
 
 
 builtin_options = {
-    'buildtype':  [UserComboOption, 'Build type to use.', ['plain', 'debug', 'debugoptimized', 'release', 'minsize'], 'debug'],
+    'buildtype':  [UserComboOption, 'Build type to use.', ['plain', 'debug', 'debugmedium', 'debugoptimized', 'release', 'minsize'], 'debug'],
     'strip':      [UserBooleanOption, 'Strip targets on install.', False],
     'unity':      [UserComboOption, 'Unity build.', ['on', 'off', 'subprojects'], 'off'],
     'prefix':     [UserStringOption, 'Installation prefix.', default_prefix()],
