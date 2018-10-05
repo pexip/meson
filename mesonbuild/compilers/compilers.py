@@ -21,7 +21,7 @@ from .. import coredata
 from .. import mlog
 from .. import mesonlib
 from ..mesonlib import (
-    EnvironmentException, MesonException, OrderedSet,
+    EnvironmentException, MachineChoice, MesonException, OrderedSet,
     version_compare, Popen_safe
 )
 from ..envconfig import (
@@ -885,7 +885,7 @@ class Compiler:
     # manually searched.
     internal_libs = ()
 
-    def __init__(self, exelist, version, **kwargs):
+    def __init__(self, exelist, version, for_machine: MachineChoice, **kwargs):
         if isinstance(exelist, str):
             self.exelist = [exelist]
         elif isinstance(exelist, list):
@@ -903,6 +903,7 @@ class Compiler:
             self.full_version = kwargs['full_version']
         else:
             self.full_version = None
+        self.for_machine = for_machine
         self.base_options = []
 
     def __repr__(self):
@@ -2197,7 +2198,7 @@ class ClangCompiler(GnuLikeCompiler):
 
 class ArmclangCompiler:
     def __init__(self, compiler_type):
-        if not self.is_cross:
+        if self.is_cross:
             raise EnvironmentException('armclang supports only cross-compilation.')
         # Check whether 'armlink.exe' is available in path
         self.linker_exe = 'armlink.exe'
