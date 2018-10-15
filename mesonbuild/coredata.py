@@ -540,6 +540,9 @@ class CoreData:
         elif value == 'debug':
             opt = '0'
             debug = True
+        elif value == 'debugmedium':
+            opt = '1'
+            debug = True
         elif value == 'debugoptimized':
             opt = '2'
             debug = True
@@ -953,7 +956,7 @@ builtin_options = OrderedDict([
     ('auto_features',   BuiltinOption(UserFeatureOption, "Override value of all 'auto' features", 'auto')),
     ('backend',         BuiltinOption(UserComboOption, 'Backend to use', 'ninja', choices=backendlist)),
     ('buildtype',       BuiltinOption(UserComboOption, 'Build type to use', 'debug',
-                                      choices=['plain', 'debug', 'debugoptimized', 'release', 'minsize', 'custom'])),
+                                      choices=['plain', 'debug', 'debugmedium', 'debugoptimized', 'release', 'minsize', 'custom'])),
     ('debug',           BuiltinOption(UserBooleanOption, 'Debug', True)),
     ('default_library', BuiltinOption(UserComboOption, 'Default library type', 'shared', choices=['shared', 'static', 'both'])),
     ('errorlogs',       BuiltinOption(UserBooleanOption, "Whether to print the logs from failing tests", True)),
