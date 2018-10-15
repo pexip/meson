@@ -367,6 +367,9 @@ class CoreData:
         elif value == 'debug':
             opt = '0'
             debug = True
+        elif value == 'debugmedium':
+            opt = '1'
+            debug = True
         elif value == 'debugoptimized':
             opt = '2'
             debug = True
@@ -639,7 +642,7 @@ def parse_cmd_line_options(args):
             delattr(args, name)
 
 builtin_options = {
-    'buildtype':  [UserComboOption, 'Build type to use', ['plain', 'debug', 'debugoptimized', 'release', 'minsize', 'custom'], 'debug'],
+    'buildtype':  [UserComboOption, 'Build type to use', ['plain', 'debug', 'debugmedium', 'debugoptimized', 'release', 'minsize', 'custom'], 'debug'],
     'strip':      [UserBooleanOption, 'Strip targets on install', False],
     'unity':      [UserComboOption, 'Unity build', ['on', 'off', 'subprojects'], 'off'],
     'prefix':     [UserStringOption, 'Installation prefix', default_prefix()],
