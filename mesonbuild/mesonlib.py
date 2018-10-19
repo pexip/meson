@@ -1104,7 +1104,7 @@ def substring_is_in_list(substr, strlist):
             return True
     return False
 
-class OrderedSet(collections.abc.MutableSet):
+class OrderedSet(collections.MutableSet):
     """A set that preserves the order in which items are added, by first
     insertion.
     """

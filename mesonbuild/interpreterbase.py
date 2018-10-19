@@ -603,7 +603,9 @@ The result of this is undefined and will become a hard error in a future Meson r
 
         if cur.operation == 'add':
             if isinstance(l, dict) and isinstance(r, dict):
-                return {**l, **r}
+                tmp = l.copy()
+                tmp.update(r)
+                return tmp
             try:
                 return l + r
             except Exception as e:
@@ -700,7 +702,8 @@ The result of this is undefined and will become a hard error in a future Meson r
         elif isinstance(old_variable, dict):
             if not isinstance(addition, dict):
                 raise InvalidArguments('The += operator requires a dict on the right hand side if the variable on the left is a dict')
-            new_value = {**old_variable, **addition}
+            new_value = old_variable.copy()
+            new_value.update(addition)
         # Add other data types here.
         else:
             raise InvalidArguments('The += operator currently only works with arrays, dicts, strings or ints ')
