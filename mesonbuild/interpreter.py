@@ -1920,6 +1920,7 @@ class Interpreter(InterpreterBase):
                            'add_global_link_arguments': self.func_add_global_link_arguments,
                            'add_project_link_arguments': self.func_add_project_link_arguments,
                            'add_test_setup': self.func_add_test_setup,
+                           'add_test_setup_default': self.func_add_test_setup_default,
                            'add_languages': self.func_add_languages,
                            'assert': self.func_assert,
                            'benchmark': self.func_benchmark,
@@ -3707,6 +3708,15 @@ different subdirectory.
                                                              gdb=gdb,
                                                              timeout_multiplier=timeout_multiplier,
                                                              env=env)
+
+    @permittedKwargs(permitted_kwargs['add_test_setup'])
+    @stringArgs
+    def func_add_test_setup_default(self, node, args, kwargs):
+        if len(args) != 1:
+            raise InterpreterException('Add_test_setup_default needs one argument for the setup name.')
+        setup_name = args[0]
+        self.build.test_setup_default_name = setup_name
+        self.func_add_test_setup(node, args, kwargs)
 
     def get_argdict_on_crossness(self, native_dict, cross_dict, kwargs):
         for_native = kwargs.get('native', not self.environment.is_cross_build())

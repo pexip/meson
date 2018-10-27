@@ -433,6 +433,8 @@ class TestHarness:
 
     def get_test_runner(self, test):
         options = deepcopy(self.options)
+        if options.setup is None:
+            options.setup = self.build_data.test_setup_default_name
         if options.setup:
             env = self.merge_suite_options(options, test)
         else:
