@@ -116,17 +116,17 @@ def returncode_to_status(retcode):
             signame = signal.Signals(signum).name
         except ValueError:
             signame = 'SIGinvalid'
-        return '(killed by signal %d %s)' % (signum, signame)
+        return '(killed by signal %x %s)' % (signum, signame)
 
     if retcode <= 128:
-        return '(exit status %d)' % (retcode,)
+        return '(exit status %x)' % (retcode,)
 
     signum = retcode - 128
     try:
         signame = signal.Signals(signum).name
     except ValueError:
         signame = 'SIGinvalid'
-    return '(exit status %d or signal %d %s)' % (retcode, signum, signame)
+    return '(exit status %x or signal %x %s)' % (retcode, signum, signame)
 
 def env_tuple_to_str(env):
     return ''.join(["%s='%s' " % (k, v) for k, v in env])
