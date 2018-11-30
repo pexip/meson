@@ -1559,6 +1559,10 @@ class GnuLikeCompiler(abc.ABC):
             # GNU ld and LLVM lld
             return ['-Wl,--allow-shlib-undefined']
 
+    def get_gui_app_args(self, value):
+        if self.compiler_type.is_windows_compiler and value:
+            return ['-mwindows']
+        return []
 
 class GnuCompiler(GnuLikeCompiler):
     """
@@ -1596,11 +1600,6 @@ class GnuCompiler(GnuLikeCompiler):
 
     def get_pch_suffix(self):
         return 'gch'
-
-    def get_gui_app_args(self, value):
-        if self.compiler_type.is_windows_compiler and value:
-            return ['-mwindows']
-        return []
 
     def openmp_flags(self):
         return ['-fopenmp']
