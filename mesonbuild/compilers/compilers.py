@@ -1633,7 +1633,10 @@ class PGICompiler:
             return ['-silent']
 
         def openmp_flags(self):
-            return ['-fopenmp']
+            return ['-mp']
+
+    def get_allow_undefined_link_args(self):
+        return []
 
 
 class FlangCompiler:
@@ -1653,7 +1656,10 @@ class FlangCompiler:
             return ['-silent']
 
         def openmp_flags(self):
-            return ['-fopenmp']
+            return ['-mp']
+
+    def get_allow_undefined_link_args(self):
+        return []
 
 
 class ElbrusCompiler(GnuCompiler):
