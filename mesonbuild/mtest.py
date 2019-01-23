@@ -82,6 +82,8 @@ def add_arguments(parser):
                         help='Do not split stderr and stdout in test logs.')
     parser.add_argument('--print-errorlogs', default=False, action='store_true',
                         help="Whether to print failing tests' logs.")
+    parser.add_argument('--print-alllogs', default=False, action='store_true',
+                        help="Whether to print all tests' logs.")
     parser.add_argument('--benchmark', default=False, action='store_true',
                         help="Run benchmarks instead of tests.")
     parser.add_argument('--logbase', default='testlog',
@@ -503,7 +505,10 @@ class TestHarness:
             else:
                 print(result_str)
         result_str += "\n\n" + result.get_log()
-        if (result.returncode != GNU_SKIP_RETURNCODE) \
+
+        if self.options.print_alllogs:
+            self.collected_logs.append(result_str)
+        elif (result.returncode != GNU_SKIP_RETURNCODE) \
                 and (result.returncode != 0) != result.should_fail:
             if self.options.print_errorlogs:
                 self.collected_logs.append(result_str)
@@ -528,11 +533,17 @@ Timeout:            %4d
 
     def print_collected_logs(self):
         if len(self.collected_logs) > 0:
-            if len(self.collected_logs) > 10:
+            if self.options.print_alllogs:
+                print('\nThe output from all tests:\n')
+                collected_logs = self.collected_logs
+            elif len(self.collected_logs) > 10:
                 print('\nThe output from 10 first failed tests:\n')
+                collected_logs = self.collected_logs[:10]
             else:
                 print('\nThe output from the failed tests:\n')
-            for log in self.collected_logs[:10]:
+                collected_logs = self.collected_logs
+
+            for log in collected_logs:
                 lines = log.splitlines()
                 if len(lines) > 104:
                     print('\n'.join(lines[0:4]))
