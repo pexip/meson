@@ -767,7 +767,7 @@ Timeout:            %4d
                 print('\nThe output from the failed tests:\n')
             for log in self.collected_logs[:10]:
                 lines = log.splitlines()
-                if len(lines) > 104:
+                if len(lines) > 104 and not self.options.print_alllogs:
                     print('\n'.join(lines[0:4]))
                     print('--- Listing only the last 100 lines from a long log. ---')
                     lines = lines[-100:]
