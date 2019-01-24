@@ -778,7 +778,7 @@ Timeout:            %4d
 
             for log in collected_logs:
                 lines = log.splitlines()
-                if len(lines) > 104:
+                if len(lines) > 104 and not self.options.print_alllogs:
                     print('\n'.join(lines[0:4]))
                     print('--- Listing only the last 100 lines from a long log. ---')
                     lines = lines[-100:]
