@@ -151,7 +151,7 @@ cuda_buildtype_args = {'plain': [],
                        'debugoptimized': [],
                        'release': [],
                        'minsize': [],
-                      }
+                       }
 
 arm_buildtype_args = {'plain': [],
                       'debug': ['-O0', '--debug'],
