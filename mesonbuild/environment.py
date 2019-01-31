@@ -1520,6 +1520,7 @@ class BinaryTable:
         'windres': 'WINDRES',
 
         'cmake': 'CMAKE',
+        'qmake': 'QMAKE',
         'pkgconfig': 'PKG_CONFIG',
     }
 
