@@ -21,7 +21,7 @@ from .. import coredata
 from .. import mlog
 from .. import mesonlib
 from ..mesonlib import (
-    EnvironmentException, MachineChoice, MesonException, OrderedSet,
+    EnvironmentException, MesonException, OrderedSet,
     version_compare, Popen_safe
 )
 
@@ -1650,7 +1650,8 @@ class PGICompiler:
         self.compiler_type = compiler_type
 
         default_warn_args = ['-Minform=inform']
-        self.warn_args = {'1': default_warn_args,
+        self.warn_args = {'0': [],
+                          '1': default_warn_args,
                           '2': default_warn_args,
                           '3': default_warn_args}
 
@@ -1951,7 +1952,8 @@ class ArmCompiler:
         self.id = 'arm'
         self.compiler_type = compiler_type
         default_warn_args = []
-        self.warn_args = {'1': default_warn_args,
+        self.warn_args = {'0': [],
+                          '1': default_warn_args,
                           '2': default_warn_args + [],
                           '3': default_warn_args + []}
         # Assembly
@@ -2043,7 +2045,8 @@ class CcrxCompiler:
         # Assembly
         self.can_compile_suffixes.update('s')
         default_warn_args = []
-        self.warn_args = {'1': default_warn_args,
+        self.warn_args = {'0': [],
+                          '1': default_warn_args,
                           '2': default_warn_args + [],
                           '3': default_warn_args + []}
 
