@@ -1170,6 +1170,7 @@ class Compiler:
         if not want_output:
             if cdata is not None and key in cdata.compiler_check_cache:
                 p = cdata.compiler_check_cache[key]
+                p.cached = True
                 mlog.debug('Using cached compile:')
                 mlog.debug('Cached command line: ', ' '.join(p.commands), '\n')
                 mlog.debug('Code:\n', code)
@@ -1227,6 +1228,7 @@ class Compiler:
                     for i in todel:
                         delattr(p, i)
                     cdata.compiler_check_cache[key] = p
+                p.cached = False
                 yield p
         except (PermissionError, OSError):
             # On Windows antivirus programs and the like hold on to files so
