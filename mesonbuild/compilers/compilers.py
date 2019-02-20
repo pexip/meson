@@ -941,7 +941,7 @@ class Compiler:
     def get_default_suffix(self) -> str:
         return self.default_suffix
 
-    def get_define(self, dname, prefix, env, extra_args, dependencies) -> (str, bool):
+    def get_define(self, dname, prefix, env, extra_args, dependencies) -> Tuple[str, bool]:
         raise EnvironmentException('%s does not support get_define ' % self.get_id())
 
     def compute_int(self, expression, low, high, guess, prefix, env, extra_args, dependencies) -> int:
@@ -950,10 +950,10 @@ class Compiler:
     def compute_parameters_with_absolute_paths(self, parameter_list, build_dir):
         raise EnvironmentException('%s does not support compute_parameters_with_absolute_paths ' % self.get_id())
 
-    def has_members(self, typename, membernames, prefix, env, *, extra_args=None, dependencies=None) -> (bool, bool):
+    def has_members(self, typename, membernames, prefix, env, *, extra_args=None, dependencies=None) -> Tuple[bool, bool]:
         raise EnvironmentException('%s does not support has_member(s) ' % self.get_id())
 
-    def has_type(self, typename, prefix, env, extra_args, *, dependencies=None) -> (bool, bool):
+    def has_type(self, typename, prefix, env, extra_args, *, dependencies=None) -> Tuple[bool, bool]:
         raise EnvironmentException('%s does not support has_type ' % self.get_id())
 
     def symbols_have_underscore_prefix(self, env) -> bool:
@@ -1099,19 +1099,19 @@ class Compiler:
     def get_option_link_args(self, options):
         return []
 
-    def check_header(self, *args, **kwargs) -> (bool, bool):
+    def check_header(self, *args, **kwargs) -> Tuple[bool, bool]:
         raise EnvironmentException('Language %s does not support header checks.' % self.get_display_language())
 
-    def has_header(self, *args, **kwargs) -> (bool, bool):
+    def has_header(self, *args, **kwargs) -> Tuple[bool, bool]:
         raise EnvironmentException('Language %s does not support header checks.' % self.get_display_language())
 
-    def has_header_symbol(self, *args, **kwargs) -> (bool, bool):
+    def has_header_symbol(self, *args, **kwargs) -> Tuple[bool, bool]:
         raise EnvironmentException('Language %s does not support header symbol checks.' % self.get_display_language())
 
-    def compiles(self, *args, **kwargs) -> (bool, bool):
+    def compiles(self, *args, **kwargs) -> Tuple[bool, bool]:
         raise EnvironmentException('Language %s does not support compile checks.' % self.get_display_language())
 
-    def links(self, *args, **kwargs) -> (bool, bool):
+    def links(self, *args, **kwargs) -> Tuple[bool, bool]:
         raise EnvironmentException('Language %s does not support link checks.' % self.get_display_language())
 
     def run(self, *args, **kwargs) -> RunResult:
@@ -1123,7 +1123,7 @@ class Compiler:
     def alignment(self, *args, **kwargs) -> int:
         raise EnvironmentException('Language %s does not support alignment checks.' % self.get_display_language())
 
-    def has_function(self, *args, **kwargs) -> (bool, bool):
+    def has_function(self, *args, **kwargs) -> Tuple[bool, bool]:
         raise EnvironmentException('Language %s does not support function checks.' % self.get_display_language())
 
     @classmethod
@@ -1137,12 +1137,12 @@ class Compiler:
     def get_library_dirs(self, *args, **kwargs):
         return ()
 
-    def has_multi_arguments(self, args, env) -> (bool, bool):
+    def has_multi_arguments(self, args, env) -> Tuple[bool, bool]:
         raise EnvironmentException(
             'Language {} does not support has_multi_arguments.'.format(
                 self.get_display_language()))
 
-    def has_multi_link_arguments(self, args, env) -> (bool, bool):
+    def has_multi_link_arguments(self, args, env) -> Tuple[bool, bool]:
         raise EnvironmentException(
             'Language {} does not support has_multi_link_arguments.'.format(
                 self.get_display_language()))
@@ -1160,7 +1160,7 @@ class Compiler:
         return os.path.join(dirname, 'output.' + suffix)
 
     @contextlib.contextmanager
-    def compile(self, code, extra_args=None, mode='link', want_output=False, cdata: coredata.CoreData = None):
+    def compile(self, code, extra_args=None, mode='link', want_output=False, cdata: Optional[coredata.CoreData] = None):
         if extra_args is None:
             textra_args = None
             extra_args = []
