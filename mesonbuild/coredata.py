@@ -669,12 +669,6 @@ def get_builtin_option_choices(optname):
     else:
         raise RuntimeError('Tried to get the supported values for an unknown builtin option \'%s\'.' % optname)
 
-def get_builtin_option_description(optname):
-    if optname in builtin_options:
-        return builtin_options[optname].description
-    else:
-        raise RuntimeError('Tried to get the description for an unknown builtin option \'%s\'.' % optname)
-
 def get_builtin_option_default(optname, prefix=''):
     if optname in builtin_options:
         o = builtin_options[optname]
@@ -704,7 +698,7 @@ def add_builtin_argument(p, name):
 
     c = get_builtin_option_choices(name)
     b = builtin.argparse_action()
-    h = get_builtin_option_description(name)
+    h = builtin.description
     if not b:
         h = h.rstrip('.') + ' (default: %s).' % get_builtin_option_default(name)
     else:
