@@ -675,14 +675,6 @@ def get_builtin_option_description(optname):
     else:
         raise RuntimeError('Tried to get the description for an unknown builtin option \'%s\'.' % optname)
 
-def get_builtin_option_action(optname):
-    default = builtin_options[optname].default
-    if default is True:
-        return 'store_false'
-    elif default is False:
-        return 'store_true'
-    return None
-
 def get_builtin_option_default(optname, prefix=''):
     if optname in builtin_options:
         o = builtin_options[optname]
@@ -703,9 +695,15 @@ def get_builtin_option_cmdline_name(name):
         return '--' + name.replace('_', '-')
 
 def add_builtin_argument(p, name):
+    try:
+        builtin = builtin_options[name]
+    except KeyError:
+        raise RuntimeError('Tried to get attribute of unknown builtin option "{}"'.format(name))
+
     kwargs = {}
+
     c = get_builtin_option_choices(name)
-    b = get_builtin_option_action(name)
+    b = builtin.argparse_action()
     h = get_builtin_option_description(name)
     if not b:
         h = h.rstrip('.') + ' (default: %s).' % get_builtin_option_default(name)
@@ -773,6 +771,13 @@ class BuiltinOption(Generic[_U]):
         if self.choices:
             keywords['choices'] = self.choices
         return self.opt_type(name, self.description, **keywords)
+
+    def argparse_action(self) -> Optional[str]:
+        if self.default is True:
+            return 'store_false'
+        elif self.default is False:
+            return 'store_true'
+        return None
 
 
 builtin_options = {
