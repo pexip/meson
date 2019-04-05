@@ -26,6 +26,7 @@ from .base import (
     DependencyException, DependencyMethods, ExternalDependency, PkgConfigDependency,
     strip_system_libdirs, ConfigToolDependency,
 )
+from .misc import ThreadDependency
 
 
 def get_shared_library_suffix(environment, native):
@@ -49,6 +50,7 @@ class GTestDependency(ExternalDependency):
             os.path.join(prefix, 'src/gtest/src'),
             os.path.join(prefix, 'src/googletest/googletest/src')]
         self.detect()
+        self.ext_deps.append(ThreadDependency(environment, kwargs))
 
     def detect(self):
         gtest_detect = self.clib_compiler.find_library("gtest", self.env, [])
@@ -90,9 +92,6 @@ class GTestDependency(ExternalDependency):
                 return True
         return False
 
-    def need_threads(self):
-        return True
-
     def log_info(self):
         if self.prebuilt:
             return 'prebuilt'
@@ -125,6 +124,7 @@ class GMockDependency(ExternalDependency):
     def __init__(self, environment, kwargs):
         super().__init__('gmock', environment, 'cpp', kwargs)
         self.main = kwargs.get('main', False)
+        self.ext_deps.append(ThreadDependency(environment, kwargs))
 
         # If we are getting main() from GMock, we definitely
         # want to avoid linking in main() from GTest
@@ -173,9 +173,6 @@ class GMockDependency(ExternalDependency):
                 return
 
         self.is_found = False
-
-    def need_threads(self):
-        return True
 
     def log_info(self):
         if self.prebuilt:
@@ -269,6 +266,7 @@ class LLVMDependency(ConfigToolDependency):
             self._set_old_link_args()
         self.link_args = strip_system_libdirs(environment, self.link_args)
         self.link_args = self.__fix_bogus_link_args(self.link_args)
+        self.ext_deps.append(ThreadDependency(environment, kwargs))
 
     @staticmethod
     def __fix_bogus_link_args(args):
@@ -405,9 +403,6 @@ class LLVMDependency(ConfigToolDependency):
                 self.required_modules.add(mod)
 
             self.module_details.append(mod + status)
-
-    def need_threads(self):
-        return True
 
     def log_details(self):
         if self.module_details:
