@@ -496,7 +496,7 @@ class CoreData:
         from . import optinterpreter
         for k, v in default_options.items():
             if subproject:
-                if optinterpreter.is_invalid_name(k):
+                if optinterpreter.is_invalid_name(k, log=False):
                     continue
                 k = subproject + ':' + k
             env.cmd_line_options.setdefault(k, v)
@@ -514,7 +514,7 @@ class CoreData:
             elif k not in builtin_options:
                 if ':' in k:
                     continue
-                if optinterpreter.is_invalid_name(k):
+                if optinterpreter.is_invalid_name(k, log=False):
                     continue
             options[k] = v
 
