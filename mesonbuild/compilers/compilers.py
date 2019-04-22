@@ -1520,7 +1520,7 @@ def gnulike_default_include_dirs(compiler, lang):
                 break
             else:
                 paths.append(line[1:])
-    if len(paths) == 0:
+    if not paths:
         mlog.warning('No include directory found parsing "{cmd}" output'.format(cmd=" ".join(cmd)))
     return paths
 
