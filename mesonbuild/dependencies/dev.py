@@ -50,7 +50,7 @@ class GTestDependency(ExternalDependency):
             os.path.join(prefix, 'src/gtest/src'),
             os.path.join(prefix, 'src/googletest/googletest/src')]
         self.detect()
-        self.ext_deps.append(ThreadDependency(environment, kwargs))
+        self._add_sub_dependency(ThreadDependency, environment, kwargs)
 
     def detect(self):
         gtest_detect = self.clib_compiler.find_library("gtest", self.env, [])
@@ -124,7 +124,7 @@ class GMockDependency(ExternalDependency):
     def __init__(self, environment, kwargs):
         super().__init__('gmock', environment, 'cpp', kwargs)
         self.main = kwargs.get('main', False)
-        self.ext_deps.append(ThreadDependency(environment, kwargs))
+        self._add_sub_dependency(ThreadDependency, environment, kwargs)
 
         # If we are getting main() from GMock, we definitely
         # want to avoid linking in main() from GTest
@@ -263,7 +263,7 @@ class LLVMDependency(ConfigToolDependency):
             self._set_old_link_args()
         self.link_args = strip_system_libdirs(environment, self.link_args)
         self.link_args = self.__fix_bogus_link_args(self.link_args)
-        self.ext_deps.append(ThreadDependency(environment, kwargs))
+        self._add_sub_dependency(ThreadDependency, environment, kwargs)
 
     @staticmethod
     def __fix_bogus_link_args(args):
