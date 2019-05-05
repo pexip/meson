@@ -149,7 +149,11 @@ class ClangCPPCompiler(ClangCompiler, CPPCompiler):
 
     def get_options(self):
         opts = CPPCompiler.get_options(self)
-        opts.update({'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
+        opts.update({'cpp_eh': coredata.UserComboOption('cpp_eh',
+                                                        'C++ exception handling type.',
+                                                        ['none', 'default'],
+                                                        'default'),
+                     'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
                                                          ['none', 'c++98', 'c++03', 'c++11', 'c++14', 'c++17', 'c++1z', 'c++2a',
                                                           'gnu++11', 'gnu++14', 'gnu++17', 'gnu++1z', 'gnu++2a'],
                                                          'none')})
@@ -160,6 +164,8 @@ class ClangCPPCompiler(ClangCompiler, CPPCompiler):
         std = options['cpp_std']
         if std.value != 'none':
             args.append(self._find_best_cpp_std(std.value))
+        if options['cpp_eh'].value == 'none':
+            args.append('-fno-exceptions')
         return args
 
     def get_option_link_args(self, options):
@@ -181,7 +187,11 @@ class ArmclangCPPCompiler(ArmclangCompiler, CPPCompiler):
 
     def get_options(self):
         opts = CPPCompiler.get_options(self)
-        opts.update({'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
+        opts.update({'cpp_eh': coredata.UserComboOption('cpp_eh',
+                                                        'C++ exception handling type.',
+                                                        ['none', 'default'],
+                                                        'default'),
+                     'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
                                                          ['none', 'c++98', 'c++03', 'c++11', 'c++14', 'c++17',
                                                           'gnu++98', 'gnu++03', 'gnu++11', 'gnu++14', 'gnu++17'],
                                                          'none')})
@@ -192,6 +202,8 @@ class ArmclangCPPCompiler(ArmclangCompiler, CPPCompiler):
         std = options['cpp_std']
         if std.value != 'none':
             args.append('-std=' + std.value)
+        if options['cpp_eh'].value == 'none':
+            args.append('-fno-exceptions')
         return args
 
     def get_option_link_args(self, options):
@@ -210,7 +222,11 @@ class GnuCPPCompiler(GnuCompiler, CPPCompiler):
 
     def get_options(self):
         opts = CPPCompiler.get_options(self)
-        opts.update({'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
+        opts.update({'cpp_eh': coredata.UserComboOption('cpp_eh',
+                                                        'C++ exception handling type.',
+                                                        ['none', 'default'],
+                                                        'default'),
+                     'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
                                                          ['none', 'c++98', 'c++03', 'c++11', 'c++14', 'c++17', 'c++1z', 'c++2a',
                                                           'gnu++03', 'gnu++11', 'gnu++14', 'gnu++17', 'gnu++1z', 'gnu++2a'],
                                                          'none'),
@@ -228,6 +244,8 @@ class GnuCPPCompiler(GnuCompiler, CPPCompiler):
         std = options['cpp_std']
         if std.value != 'none':
             args.append(self._find_best_cpp_std(std.value))
+        if options['cpp_eh'].value == 'none':
+            args.append('-fno-exceptions')
         if options['cpp_debugstl'].value:
             args.append('-D_GLIBCXX_DEBUG=1')
         return args
@@ -258,7 +276,11 @@ class ElbrusCPPCompiler(GnuCPPCompiler, ElbrusCompiler):
     # It does not support c++/gnu++ 17 and 1z, but still does support 0x, 1y, and gnu++98.
     def get_options(self):
         opts = CPPCompiler.get_options(self)
-        opts.update({'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
+        opts.update({'cpp_eh': coredata.UserComboOption('cpp_eh',
+                                                        'C++ exception handling type.',
+                                                        ['none', 'default'],
+                                                        'default'),
+                     'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
                                                          ['none', 'c++98', 'c++03', 'c++0x', 'c++11', 'c++14', 'c++1y',
                                                           'gnu++98', 'gnu++03', 'gnu++0x', 'gnu++11', 'gnu++14', 'gnu++1y'],
                                                          'none'),
@@ -304,7 +326,11 @@ class IntelCPPCompiler(IntelCompiler, CPPCompiler):
             c_stds += ['c++17']
         if version_compare(self.version, '>=17.0.0'):
             g_stds += ['gnu++14']
-        opts.update({'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
+        opts.update({'cpp_eh': coredata.UserComboOption('cpp_eh',
+                                                        'C++ exception handling type.',
+                                                        ['none', 'default'],
+                                                        'default'),
+                     'cpp_std': coredata.UserComboOption('cpp_std', 'C++ language standard to use',
                                                          ['none'] + c_stds + g_stds,
                                                          'none'),
                      'cpp_debugstl': coredata.UserBooleanOption('cpp_debugstl',
@@ -321,6 +347,8 @@ class IntelCPPCompiler(IntelCompiler, CPPCompiler):
                 'gnu++03': 'gnu++98'
             }
             args.append('-std=' + remap_cpp03.get(std.value, std.value))
+        if options['cpp_eh'].value == 'none':
+            args.append('-fno-exceptions')
         if options['cpp_debugstl'].value:
             args.append('-D_GLIBCXX_DEBUG=1')
         return args
@@ -339,8 +367,8 @@ class VisualStudioLikeCPPCompilerMixin:
     def _get_options_impl(self, opts, cpp_stds: typing.List[str]):
         opts.update({'cpp_eh': coredata.UserComboOption('cpp_eh',
                                                         'C++ exception handling type.',
-                                                        ['none', 'a', 's', 'sc'],
-                                                        'sc'),
+                                                        ['none', 'a', 's', 'sc', 'default'],
+                                                        'default'),
                      'cpp_std': coredata.UserComboOption('cpp_std',
                                                          'C++ language standard to use',
                                                          cpp_stds,
@@ -354,7 +382,9 @@ class VisualStudioLikeCPPCompilerMixin:
         args = []
 
         eh = options['cpp_eh']
-        if eh.value != 'none':
+        if eh.value == 'default':
+            args.append('/EHsc')
+        elif eh.value != 'none':
             args.append('/EH' + eh.value)
 
         vc_version_map = {
