@@ -2053,7 +2053,10 @@ class ExtraFrameworkDependency(ExternalDependency):
             if each.name.lower() == 'current':
                 continue
             versions.append(Version(each.name))
-        return 'Versions/{}/Headers'.format(sorted(versions)[-1]._s)
+        try:
+            return 'Versions/{}/Headers'.format(sorted(versions)[-1]._s)
+        except IndexError:
+            return None
 
     def _get_framework_include_path(self, path):
         # According to the spec, 'Headers' must always be a symlink to the
