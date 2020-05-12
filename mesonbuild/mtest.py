@@ -85,6 +85,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help='Do not rebuild before running tests.')
     parser.add_argument('--gdb', default=False, dest='gdb', action='store_true',
                         help='Run test under gdb.')
+    parser.add_argument('--lldb', default=False, dest='lldb', action='store_true',
+                        help='Run test under lldb.')
     parser.add_argument('--list', default=False, dest='list', action='store_true',
                         help='List available tests.')
     parser.add_argument('--wrapper', default=None, dest='wrapper', type=split_args,
@@ -483,7 +485,7 @@ class SingleTestRunner:
             return TestRun(self.test, self.test_env, TestResult.SKIP, GNU_SKIP_RETURNCODE, 0.0, skip_stdout, None, None)
         else:
             wrap = TestHarness.get_wrapper(self.options)
-            if self.options.gdb:
+            if self.options.gdb or self.options.lldb:
                 self.test.timeout = None
             return self._run_cmd(wrap + cmd + self.test.cmd_args + self.options.test_args)
 
@@ -519,13 +521,13 @@ class SingleTestRunner:
             stdout = tempfile.TemporaryFile("wb+")
 
         # Let gdb handle ^C instead of us
-        if self.options.gdb:
+        if self.options.gdb or self.options.lldb:
             previous_sigint_handler = signal.getsignal(signal.SIGINT)
             # Make the meson executable ignore SIGINT while gdb is running.
             signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         def preexec_fn() -> None:
-            if self.options.gdb:
+            if self.options.gdb or self.options.lldb:
                 # Restore the SIGINT handler for the child process to
                 # ensure it can handle it.
                 signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -559,7 +561,7 @@ class SingleTestRunner:
             mlog.warning('CTRL-C detected while running %s' % (self.test.name))
             kill_test = True
         finally:
-            if self.options.gdb:
+            if self.options.gdb or self.options.lldb:
                 # Let us accept ^C again
                 signal.signal(signal.SIGINT, previous_sigint_handler)
 
@@ -672,9 +674,9 @@ class TestHarness:
             if full_name not in self.build_data.test_setups:
                 sys.exit("Test setup '%s' not found from project '%s'." % (options.setup, test.project_name))
             current = self.build_data.test_setups[full_name]
-        if not options.gdb:
+        if not options.gdb and not options.lldb:
             options.gdb = current.gdb
-        if options.gdb:
+        if options.gdb or options.lldb:
             options.verbose = True
         if options.timeout_multiplier is None:
             options.timeout_multiplier = current.timeout_multiplier
@@ -908,6 +910,10 @@ Timeout:            %4d
                 wrap += ['-ex', 'run', '-ex', 'quit']
             # Signal the end of arguments to gdb
             wrap += ['--args']
+        if options.lldb:
+            wrap = ['lldb']
+            if options.repeat > 1:
+                wrap += ['-o', 'run']
         if options.wrapper:
             wrap += options.wrapper
         return wrap
@@ -938,7 +944,7 @@ Timeout:            %4d
                     visible_name = self.get_pretty_suite(test)
                     single_test = self.get_test_runner(test)
 
-                    if not test.is_parallel or self.options.num_processes == 1 or single_test.options.gdb:
+                    if not test.is_parallel or self.options.num_processes == 1 or single_test.options.gdb or single_test.options.lldb:
                         self.drain_futures(futures)
                         futures = []
                         res = single_test.run()
@@ -1016,12 +1022,15 @@ def run(options: argparse.Namespace) -> int:
         return 1
 
     check_bin = None
-    if options.gdb:
+    if options.gdb or options.lldb:
         options.verbose = True
         if options.wrapper:
             print('Must not specify both a wrapper and gdb at the same time.')
             return 1
-        check_bin = 'gdb'
+        if options.gdb:
+            check_bin = 'gdb'
+        if options.lldb:
+            check_bin = 'lldb'
 
     if options.wrapper:
         check_bin = options.wrapper[0]
