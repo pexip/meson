@@ -968,8 +968,8 @@ Timeout:            %4d
                     break
 
             self.drain_futures(futures)
-            self.print_summary()
             self.print_collected_logs()
+            self.print_summary()
 
             if self.logfilename:
                 print('Full log written to %s' % self.logfilename)
