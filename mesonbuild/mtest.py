@@ -637,6 +637,7 @@ class TestHarness:
     def __init__(self, options: argparse.Namespace):
         self.options = options
         self.collected_logs = []  # type: typing.List[str]
+        self.collected_failures = []  # type: typeing.List[str]
         self.fail_count = 0
         self.expectedfail_count = 0
         self.unexpectedpass_count = 0
@@ -746,6 +747,7 @@ class TestHarness:
         if not self.options.quiet or result.res not in ok_statuses:
             if result.res not in ok_statuses and mlog.colorize_console:
                 if result.res in bad_statuses:
+                    self.collected_failures.append(result_str)
                     decorator = mlog.red
                 elif result.res is TestResult.SKIP:
                     decorator = mlog.yellow
@@ -767,7 +769,11 @@ class TestHarness:
             write_json_log(self.jsonlogfile, name, result)
 
     def print_summary(self) -> None:
-        msg = '''
+        # Prepend a list of failures
+        msg = '' if len(self.collected_failures) < 1 else "Summary of Failures:\n\n"
+        msg += '\n'.join(self.collected_failures)
+        msg += '''
+
 Ok:                 %4d
 Expected Fail:      %4d
 Fail:               %4d
