@@ -754,8 +754,17 @@ class GnomeModule(ExtensionModule):
         builddir = os.path.join(state.environment.get_build_dir(), state.subdir)
         depends = [] + girtargets
         gir_inc_dirs = []
+
+        cflags = []
+        internal_ldflags = []
+        external_ldflags = []
+
         langs_compilers = self._get_girtargets_langs_compilers(girtargets)
-        cflags, internal_ldflags, external_ldflags = self._get_langs_compilers_flags(state, langs_compilers)
+        compiler_cflags, compiler_internal_ldflags, compiler_external_ldflags = self._get_langs_compilers_flags(state, langs_compilers)
+        cflags += list(self._get_scanner_cflags(compiler_cflags))
+        internal_ldflags += list(self._get_scanner_ldflags(compiler_internal_ldflags))
+        external_ldflags += list(self._get_scanner_ldflags(compiler_external_ldflags))
+
         deps = self._get_gir_targets_deps(girtargets)
         deps += extract_as_list(kwargs, 'dependencies', pop=True, unholder=True)
         typelib_includes = self._gather_typelib_includes_and_update_depends(state, deps, depends)
@@ -768,14 +777,9 @@ class GnomeModule(ExtensionModule):
         cflags += list(self._get_scanner_cflags(self._get_external_args_for_langs(state, [lc[0] for lc in langs_compilers])))
         internal_ldflags += list(self._get_scanner_ldflags(dep_internal_ldflags))
         external_ldflags += list(self._get_scanner_ldflags(dep_external_ldflags))
+
         girtargets_inc_dirs = self._get_gir_targets_inc_dirs(girtargets)
         inc_dirs = self._scan_inc_dirs(kwargs)
-
-        # g-ir-scanner only supports -D, -I and -U:
-        cflags = [flag for flag in cflags if flag.startswith('-D') or flag.startswith('-I') or flag.startswith('-U')]
-        # and we only allow -L and --extra-library for ldflags
-        internal_ldflags = [flag for flag in internal_ldflags if flag.startswith('-L') or flag.startswith('--extra-library')]
-        external_ldflags = [flag for flag in external_ldflags if flag.startswith('-L') or flag.startswith('--extra-library')]
 
         scan_command = [giscanner]
         scan_command += pkgargs
