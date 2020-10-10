@@ -745,15 +745,16 @@ class TestHarness:
         bad_statuses = (TestResult.FAIL, TestResult.TIMEOUT, TestResult.UNEXPECTEDPASS,
                         TestResult.ERROR)
         if not self.options.quiet or result.res not in ok_statuses:
-            if result.res not in ok_statuses and mlog.colorize_console:
-                if result.res in bad_statuses:
-                    self.collected_failures.append(result_str)
-                    decorator = mlog.red
-                elif result.res is TestResult.SKIP:
-                    decorator = mlog.yellow
-                else:
-                    sys.exit('Unreachable code was ... well ... reached.')
-                print(decorator(result_str).get_text(True))
+            if result.res not in ok_statuses:
+                self.collected_failures.append(result_str)
+                if mlog.colorize_console:
+                    if result.res in bad_statuses:
+                        decorator = mlog.red
+                    elif result.res is TestResult.SKIP:
+                        decorator = mlog.yellow
+                    else:
+                        sys.exit('Unreachable code was ... well ... reached.')
+                    print(decorator(result_str).get_text(True))
             else:
                 print(result_str)
         result_str += "\n\n" + result.get_log()
