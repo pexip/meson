@@ -583,9 +583,13 @@ class SingleTestRunner:
                         # already died) so carry on.
                         pass
 
-                # Send a termination signal to the process group that setsid()
-                # created - giving it a chance to perform any cleanup.
-                _send_signal_to_process_group(p.pid, signal.SIGTERM)
+                if timed_out:
+                    # Send SIGQUIT to generate a core dump
+                    _send_signal_to_process_group(p.pid, signal.SIGQUIT)
+                else:
+                    # Send a termination signal to the process group that setsid()
+                    # created - giving it a chance to perform any cleanup.
+                    _send_signal_to_process_group(p.pid, signal.SIGTERM)
 
                 # Make sure the termination signal actually kills the process
                 # group, otherwise retry with a SIGKILL.
