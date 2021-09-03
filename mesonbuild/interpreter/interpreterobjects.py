@@ -569,8 +569,26 @@ class DependencyHolder(ObjectHolder[Dependency]):
     @noPosargs
     def as_link_whole_method(self, args: T.List[TYPE_var], kwargs: TYPE_kwargs) -> Dependency:
         if not isinstance(self.held_object, InternalDependency):
-            raise InterpreterException('as_link_whole method is only supported on declare_dependency() objects')
-        new_dep = self.held_object.generate_link_whole_dependency()
+            FeatureNew('as_link_whole on external dependency', '1.1.0').use(self.subproject)
+        new_dep, archives = self.held_object.generate_link_whole_dependency()
+        for archive_filename in archives:
+            basename = os.path.basename(archive_filename)
+            outdir = os.path.join(self.interpreter.environment.get_scratch_dir(), f'{basename}.as_link_whole')
+            outfile = os.path.join(outdir, basename)
+            cmd = self.interpreter.environment.get_build_command() + [
+                '--internal', 'copy', archive_filename, outfile,
+            ]
+            t = build.CustomTarget(f'{basename} as-link-whole',
+                                   self.interpreter.subdir,
+                                   self.interpreter.subproject,
+                                   self.interpreter.environment,
+                                   cmd,
+                                   [archive_filename],
+                                   [outfile])
+
+            if t.get_id() not in self.interpreter.build.targets:
+                self.interpreter.add_target(t.name, t)
+                new_dep.whole_libraries.append(t)
         return new_dep
 
 _EXTPROG = T.TypeVar('_EXTPROG', bound=ExternalProgram)

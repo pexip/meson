@@ -22,11 +22,13 @@ import collections
 import itertools
 import typing as T
 from enum import Enum
+from dataclasses import dataclass
 
 from .. import mlog, mesonlib
 from ..compilers import clib_langs
 from ..mesonlib import LibType, MachineChoice, MesonException, HoldableObject, OptionKey
 from ..mesonlib import version_compare_many
+from ..utils import ar
 #from ..interpreterbase import FeatureDeprecated, FeatureNew
 
 if T.TYPE_CHECKING:
@@ -35,7 +37,7 @@ if T.TYPE_CHECKING:
     from ..interpreterbase import FeatureCheckBase
     from ..build import (
         CustomTarget, IncludeDirs, CustomTargetIndex, LibTypes,
-        StaticLibrary, StructuredSources, ExtractedObjects, GeneratedTypes
+        StaticLibrary, StructuredSources, ExtractedObjects, GeneratedList, GeneratedTypes
     )
     from ..interpreter.type_checking import PkgConfigDefineType
 
@@ -104,6 +106,12 @@ class DependencyMethods(Enum):
 DependencyTypeName = T.NewType('DependencyTypeName', str)
 
 
+@dataclass
+class ExtractArchives:
+    archive_filename: str
+    objects: T.List[str]
+
+
 class Dependency(HoldableObject):
 
     @classmethod
@@ -134,6 +142,7 @@ class Dependency(HoldableObject):
         self.d_features: T.DefaultDict[str, T.List[T.Any]] = collections.defaultdict(list)
         self.featurechecks: T.List['FeatureCheckBase'] = []
         self.feature_since: T.Optional[T.Tuple[str, str]] = None
+        self.objects: T.List[T.Union[str, 'File', 'ExtractedObjects', 'CustomTarget', 'CustomTargetIndex', 'GeneratedList']] = []
 
     def __repr__(self) -> str:
         return f'<{self.__class__.__name__} {self.name}: {self.is_found}>'
@@ -259,6 +268,18 @@ class Dependency(HoldableObject):
         new_dep.include_type = self._process_include_type_kw({'include_type': include_type})
         return new_dep
 
+    def generate_link_whole_dependency(self) -> T.Tuple[Dependency, T.List[str]]:
+        archives: T.List[str] = []
+        link_args: T.List[str] = []
+        for arg in self.link_args:
+            if any(arg.endswith(i) for i in {'.a', '.lib'}) and len(archives) == 0:
+                archives.append(arg)
+            else:
+                link_args.append(arg)
+
+        new_dep = InternalDependency(self.version, [], self.compile_args, link_args, [], [], self.sources, self.extra_files, self.ext_deps, None, [], [], self.objects)
+        return new_dep, archives
+
 class InternalDependency(Dependency):
     def __init__(self, version: str, incdirs: T.List['IncludeDirs'], compile_args: T.List[str],
                  link_args: T.List[str],
@@ -282,6 +303,7 @@ class InternalDependency(Dependency):
         self.ext_deps = ext_deps
         self.variables = variables
         self.objects = objects
+
         if d_module_versions:
             self.d_features['versions'] = d_module_versions
         if d_import_dirs:
@@ -339,22 +361,21 @@ class InternalDependency(Dependency):
             return val
         raise DependencyException(f'Could not get an internal variable and no default provided for {self!r}')
 
-    def generate_link_whole_dependency(self) -> Dependency:
+    def generate_link_whole_dependency(self) -> T.Tuple[Dependency, T.List[ExtractArchives]]:
         from ..build import SharedLibrary, CustomTarget, CustomTargetIndex
-        new_dep = copy.deepcopy(self)
-        for x in new_dep.libraries:
+        new_dep, archives = super().generate_link_whole_dependency()
+        assert isinstance(new_dep, InternalDependency) # For mypy
+        new_dep.libraries = []
+        new_dep.whole_libraries = self.whole_libraries.copy()
+        for x in self.libraries:
             if isinstance(x, SharedLibrary):
                 raise MesonException('Cannot convert a dependency to link_whole when it contains a '
                                      'SharedLibrary')
             elif isinstance(x, (CustomTarget, CustomTargetIndex)) and x.links_dynamically():
                 raise MesonException('Cannot convert a dependency to link_whole when it contains a '
                                      'CustomTarget or CustomTargetIndex which is a shared library')
-
-        # Mypy doesn't understand that the above is a TypeGuard
-        new_dep.whole_libraries += T.cast('T.List[T.Union[StaticLibrary, CustomTarget, CustomTargetIndex]]',
-                                          new_dep.libraries)
-        new_dep.libraries = []
-        return new_dep
+            new_dep.whole_libraries.append(x)
+        return new_dep, archives
 
 class HasNativeKwarg:
     def __init__(self, kwargs: T.Dict[str, T.Any]):
