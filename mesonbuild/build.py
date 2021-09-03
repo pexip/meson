@@ -1292,6 +1292,7 @@ class BuildTarget(Target):
             if isinstance(dep, dependencies.InternalDependency):
                 # Those parts that are internal.
                 self.process_sourcelist(dep.sources)
+                self.process_objectlist(dep.objects)
                 self.add_include_dirs(dep.include_directories, dep.get_include_type())
                 for l in dep.libraries:
                     self.link(l)
@@ -1311,6 +1312,7 @@ class BuildTarget(Target):
                 if dep not in self.external_deps:
                     self.external_deps.append(dep)
                     self.process_sourcelist(dep.get_sources())
+                    self.process_objectlist(dep.objects)
                 self.add_deps(dep.ext_deps)
             elif isinstance(dep, BuildTarget):
                 raise InvalidArguments('''Tried to use a build target as a dependency.
