@@ -5084,3 +5084,52 @@ class AllPlatformTests(BasePlatformTests):
             'link', 'lld-link', 'mwldarm', 'mwldeppc', 'optlink', 'xilink',
         }
         self.assertEqual(cc.linker.get_accepts_rsp(), has_rsp)
+
+    def test_scripts_loaded_modules(self):
+        '''
+        Simulate a wrapped command, as done for custom_target() that capture
+        output. The script will print all python modules loaded and we verify
+        that it contains only an acceptable subset. Loading too many modules
+        slows down the build when many custom targets get wrapped.
+        '''
+        es = ExecutableSerialisation(python_command + ['-c', 'exit(0)'], env=EnvironmentVariables())
+        p = Path(self.builddir, 'exe.dat')
+        with p.open('wb') as f:
+            pickle.dump(es, f)
+        cmd = self.meson_command + ['--internal', 'test_loaded_modules', '--unpickle', str(p)]
+        p = subprocess.run(cmd, stdout=subprocess.PIPE)
+        all_modules = json.loads(p.stdout.splitlines()[0])
+        meson_modules = [m for m in all_modules if 'meson' in m]
+        expected_meson_modules = [
+            'mesonbuild',
+            'mesonbuild._pathlib',
+            'mesonbuild.utils',
+            'mesonbuild.utils.core',
+            'mesonbuild.mesonmain',
+            'mesonbuild.mlog',
+            'mesonbuild.scripts',
+            'mesonbuild.scripts.meson_exe',
+            'mesonbuild.scripts.test_loaded_modules'
+        ]
+        self.assertEqual(sorted(expected_meson_modules), sorted(meson_modules))
+
+    def test_extract_static_library(self) -> None:
+        testdir = os.path.join(self.unit_test_dir, '111 extract static library')
+        self.init(testdir)
+
+        # Libraries should not be extracted at configure time
+        privatepath = Path(self.privatedir)
+        self.assertFalse(set(privatepath.glob('*.a.p')))
+
+        # Depending on which CI machine this is running, there could be different
+        # set of static libraries, glib and its dependencies.
+        objects = set(privatepath.glob('*.a.p/*.o'))
+        self.assertTrue(objects)
+
+        # Check that the shared library exposes symbols from glib even if we don't use them.
+        o = self._run(['objdump', '-TC', os.path.join(self.builddir, 'libglib-wrapper.so')])
+        self.assertIn('g_hash_table_new', o)
+
+        # Check that the static library contains all objects we extracted
+        o = self._run(['ar', 't', os.path.join(self.builddir, 'libglib-wrapper.a')])
+        self.assertEqual(set(o.split()), {o.name for o in objects})
