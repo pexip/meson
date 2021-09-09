@@ -83,7 +83,7 @@ class ClangCompiler(GnuLikeCompiler):
     def get_compiler_check_args(self, mode: CompileCheckMode) -> T.List[str]:
         myargs = []  # type: T.List[str]
         if mode is CompileCheckMode.COMPILE:
-            myargs.extend(['-Werror=unknown-warning-option', '-Werror=unused-command-line-argument'])
+            myargs.extend(['-Werror=unknown-warning-option'])
             if mesonlib.version_compare(self.version, '>=3.6.0'):
                 myargs.append('-Werror=ignored-optimization-argument')
         return super().get_compiler_check_args(mode) + myargs
