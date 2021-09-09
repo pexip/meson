@@ -92,7 +92,7 @@ class ClangCompiler(GnuLikeCompiler):
         # them. `strlcat` specifically with can trigger this.
         myargs: T.List[str] = ['-Werror=implicit-function-declaration']
         if mode is CompileCheckMode.COMPILE:
-            myargs.extend(['-Werror=unknown-warning-option', '-Werror=unused-command-line-argument'])
+            myargs.extend(['-Werror=unknown-warning-option'])
             if mesonlib.version_compare(self.version, '>=3.6.0'):
                 myargs.append('-Werror=ignored-optimization-argument')
         return super().get_compiler_check_args(mode) + myargs
