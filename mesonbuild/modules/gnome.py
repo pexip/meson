@@ -914,14 +914,20 @@ class GnomeModule(ExtensionModule):
                 cflags += compiler.sanitizer_compile_args(sanitize)
                 sanitize = sanitize.split(',')
                 # These must be first in ldflags
+                if sanitize:
+                    internal_ldflags += ['-fsanitize-recover=all']
                 if 'address' in sanitize:
-                    internal_ldflags += ['-lasan']
+                    internal_ldflags += ['-fsanitize=address']
+                if 'memory' in sanitize:
+                    internal_ldflags += ['-fsanitize=memory']
                 if 'thread' in sanitize:
-                    internal_ldflags += ['-ltsan']
+                    internal_ldflags += ['-fsanitize=thread']
                 if 'undefined' in sanitize:
-                    internal_ldflags += ['-lubsan']
+                    internal_ldflags += ['-fsanitize=undefined']
                 # FIXME: Linking directly to lib*san is not recommended but g-ir-scanner
                 # does not understand -f LDFLAGS. https://bugzilla.gnome.org/show_bug.cgi?id=783892
+                # We use a pexhack in gobject-introspection to provide the -f
+                # LDFLAGS, instead of hacking around with lib*san!
                 # ldflags += compiler.sanitizer_link_args(sanitize)
 
         return cflags, internal_ldflags, external_ldflags
@@ -1079,14 +1085,14 @@ class GnomeModule(ExtensionModule):
         for f in cflags:
             # _FORTIFY_SOURCE depends on / works together with -O, on the other hand this
             # just invokes the preprocessor anyway
-            if f.startswith(('-D', '-U', '-I')) and not f.startswith('-D_FORTIFY_SOURCE'):
+            if f.startswith(('-D', '-U', '-I', '-fsanitize=')) and not f.startswith('-D_FORTIFY_SOURCE'):
                 yield f
 
     @staticmethod
     def _get_scanner_ldflags(ldflags: T.Iterable[str]) -> T.Iterable[str]:
         'g-ir-scanner only accepts -L/-l; must ignore -F and other linker flags'
         for f in ldflags:
-            if f.startswith(('-L', '-l', '--extra-library')):
+            if f.startswith(('-L', '-l', '--extra-library', '-fsanitize=')):
                 yield f
 
     @typed_pos_args('gnome.generate_gir', varargs=(build.Executable, build.SharedLibrary, build.StaticLibrary), min_varargs=1)
