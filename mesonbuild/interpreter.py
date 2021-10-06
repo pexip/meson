@@ -76,7 +76,7 @@ class FeatureOptionHolder(InterpreterObject, ObjectHolder[coredata.UserFeatureOp
     def __init__(self, env: 'Environment', name: str, option: coredata.UserFeatureOption):
         InterpreterObject.__init__(self)
         ObjectHolder.__init__(self, option)
-        if option.is_auto():
+        if option.is_auto() and not option.is_user_input():
             # TODO: we need to case here because options is not a TypedDict
             self.held_object = T.cast(coredata.UserFeatureOption, env.coredata.options[OptionKey('auto_features')])
         self.name = name
