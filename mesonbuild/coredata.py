@@ -70,6 +70,7 @@ class UserOption(T.Generic[_T]):
         if not isinstance(yielding, bool):
             raise MesonException('Value of "yielding" must be a boolean.')
         self.yielding = yielding
+        self.user_input = False
 
     def printable_value(self) -> T.Union[str, int, bool, T.List[T.Union[str, int, bool]]]:
         assert isinstance(self.value, (str, int, bool, list))
@@ -81,8 +82,12 @@ class UserOption(T.Generic[_T]):
     def validate_value(self, value: T.Any) -> _T:
         raise RuntimeError('Derived option class did not override validate_value.')
 
-    def set_value(self, newvalue: T.Any) -> None:
+    def set_value(self, newvalue: T.Any, user_input: bool = False) -> None:
         self.value = self.validate_value(newvalue)
+        self.user_input = user_input
+
+    def is_user_input(self) -> bool:
+        return self.user_input
 
 class UserStringOption(UserOption[str]):
     def __init__(self, description: str, value: T.Any, yielding: T.Optional[bool] = None):
@@ -583,7 +588,7 @@ class CoreData:
                 value = self.sanitize_dir_option_value(prefix, key, value)
 
         try:
-            self.options[key].set_value(value)
+            self.options[key].set_value(value, True)
         except KeyError:
             raise MesonException(f'Tried to set unknown builtin option {str(key)}')
 
