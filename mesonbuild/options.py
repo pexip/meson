@@ -321,6 +321,7 @@ class UserOption(T.Generic[_T], HoldableObject):
     yielding: bool = DEFAULT_YIELDING
     deprecated: DeprecatedType = False
     readonly: bool = dataclasses.field(default=False)
+    user_input: bool = dataclasses.field(default=False)
 
     def __post_init__(self, value_: _T) -> None:
         self.value = self.validate_value(value_)
@@ -349,10 +350,14 @@ class UserOption(T.Generic[_T], HoldableObject):
     def validate_value(self, value: T.Any) -> _T:
         raise RuntimeError('Derived option class did not override validate_value.')
 
-    def set_value(self, newvalue: T.Any) -> bool:
+    def set_value(self, newvalue: T.Any, user_input: bool = False) -> bool:
         oldvalue = self.value
         self.value = self.validate_value(newvalue)
+        self.user_input = user_input
         return self.value != oldvalue
+
+    def is_user_input(self) -> bool:
+        return self.user_input
 
 @dataclasses.dataclass
 class EnumeratedUserOption(UserOption[_T]):
@@ -1034,7 +1039,7 @@ class OptionStore:
             return dirty
 
         old_value = opt.value
-        changed = opt.set_value(new_value)
+        changed = opt.set_value(new_value, user_input=True)
 
         if opt.readonly and changed and not first_invocation:
             raise MesonException(f'Tried to modify read only option {str(key)!r}')
