@@ -50,6 +50,7 @@ class UserOption(T.Generic[_T], HoldableObject):
         self.yielding = yielding
         self.deprecated = deprecated
         self.readonly = False
+        self.user_input = False
 
     def listify(self, value: T.Any) -> T.List[T.Any]:
         return [value]
@@ -64,10 +65,14 @@ class UserOption(T.Generic[_T], HoldableObject):
     def validate_value(self, value: T.Any) -> _T:
         raise RuntimeError('Derived option class did not override validate_value.')
 
-    def set_value(self, newvalue: T.Any) -> bool:
+    def set_value(self, newvalue: T.Any, user_input: bool = False) -> bool:
         oldvalue = getattr(self, 'value', None)
         self.value = self.validate_value(newvalue)
+        self.user_input = user_input
         return self.value != oldvalue
+    
+    def is_user_input(self) -> bool:
+        return self.user_input
 
 _U = T.TypeVar('_U', bound=UserOption[_T])
 
