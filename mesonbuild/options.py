@@ -257,6 +257,7 @@ class UserOption(T.Generic[_T], HoldableObject):
         self.yielding = yielding
         self.deprecated = deprecated
         self.readonly = False
+        self.user_input = False
 
     def listify(self, value: T.Any) -> T.List[T.Any]:
         return [value]
@@ -271,10 +272,14 @@ class UserOption(T.Generic[_T], HoldableObject):
     def validate_value(self, value: T.Any) -> _T:
         raise RuntimeError('Derived option class did not override validate_value.')
 
-    def set_value(self, newvalue: T.Any) -> bool:
+    def set_value(self, newvalue: T.Any, user_input: bool = False) -> None:
         oldvalue = getattr(self, 'value', None)
         self.value = self.validate_value(newvalue)
+        self.user_input = user_input
         return self.value != oldvalue
+
+    def is_user_input(self) -> bool:
+        return self.user_input
 
 _U = T.TypeVar('_U', bound=UserOption[_T])
 
@@ -283,7 +288,7 @@ class UserStringOption(UserOption[str]):
     def __init__(self, name: str, description: str, value: T.Any, yielding: bool = DEFAULT_YIELDING,
                  deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
         super().__init__(name, description, None, yielding, deprecated)
-        self.set_value(value)
+        self.set_value(value, True)
 
     def validate_value(self, value: T.Any) -> str:
         if not isinstance(value, str):
@@ -294,7 +299,7 @@ class UserBooleanOption(UserOption[bool]):
     def __init__(self, name: str, description: str, value: bool, yielding: bool = DEFAULT_YIELDING,
                  deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
         super().__init__(name, description, [True, False], yielding, deprecated)
-        self.set_value(value)
+        self.set_value(value, True)
 
     def __bool__(self) -> bool:
         return self.value
@@ -323,7 +328,7 @@ class UserIntegerOption(UserOption[int]):
             c.append('<=' + str(max_value))
         choices = ', '.join(c)
         super().__init__(name, description, choices, yielding, deprecated)
-        self.set_value(default_value)
+        self.set_value(default_value, True)
 
     def validate_value(self, value: T.Any) -> int:
         if isinstance(value, str):
@@ -381,7 +386,7 @@ class UserComboOption(UserOption[str]):
         for i in self.choices:
             if not isinstance(i, str):
                 raise MesonException(f'Combo choice elements for option "{self.name}" must be strings.')
-        self.set_value(value)
+        self.set_value(value, True)
 
     def validate_value(self, value: T.Any) -> str:
         if value not in self.choices:
@@ -406,7 +411,7 @@ class UserArrayOption(UserOption[T.List[str]]):
         super().__init__(name, description, choices if choices is not None else [], yielding, deprecated)
         self.split_args = split_args
         self.allow_dups = allow_dups
-        self.set_value(value)
+        self.set_value(value, True)
 
     def listify(self, value: T.Any) -> T.List[T.Any]:
         try:
@@ -439,7 +444,7 @@ class UserArrayOption(UserOption[T.List[str]]):
     def extend_value(self, value: T.Union[str, T.List[str]]) -> None:
         """Extend the value with an additional value."""
         new = self.validate_value(value)
-        self.set_value(self.value + new)
+        self.set_value(self.value + new, True)
 
 
 class UserFeatureOption(UserComboOption):

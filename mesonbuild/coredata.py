@@ -500,7 +500,7 @@ class CoreData:
             mlog.deprecation(f'Option {key.name!r} is replaced by {newname!r}')
             dirty |= self.set_option(newkey, value, first_invocation)
 
-        changed = opt.set_value(value)
+        changed = opt.set_value(value, True)
         if changed and opt.readonly and not first_invocation:
             raise MesonException(f'Tried modify read only option {str(key)!r}')
         dirty |= changed
