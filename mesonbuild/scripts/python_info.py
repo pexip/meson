@@ -39,13 +39,21 @@ def get_distutils_paths(scheme=None, prefix=None):
 # See https://github.com/mesonbuild/meson/issues/8739.
 # XXX: We should be using sysconfig, but Debian only patches distutils.
 
-if 'deb_system' in distutils.command.install.INSTALL_SCHEMES:
-    paths = get_distutils_paths(scheme='deb_system')
-    install_paths = get_distutils_paths(scheme='deb_system', prefix='')
-else:
-    paths = sysconfig.get_paths()
-    empty_vars = {'base': '', 'platbase': '', 'installed_base': ''}
-    install_paths = sysconfig.get_paths(vars=empty_vars)
+# PEXHACK: this breaks everything for us ATM, so we need to make
+#          a proper decision on wether we want to change our PYTHONPATH
+#          everywhere, and if this is the right thing to do :tm:
+
+#if 'deb_system' in distutils.command.install.INSTALL_SCHEMES:
+#    paths = get_distutils_paths(scheme='deb_system')
+#    install_paths = get_distutils_paths(scheme='deb_system', prefix='')
+#else:
+#    paths = sysconfig.get_paths()
+#    empty_vars = {'base': '', 'platbase': '', 'installed_base': ''}
+#    install_paths = sysconfig.get_paths(vars=empty_vars)
+
+paths = sysconfig.get_paths()
+empty_vars = {'base': '', 'platbase': '', 'installed_base': ''}
+install_paths = sysconfig.get_paths(scheme='posix_prefix', vars=empty_vars)
 
 def links_against_libpython():
     from distutils.core import Distribution, Extension
