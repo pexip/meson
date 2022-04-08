@@ -626,7 +626,7 @@ class PythonModule(ExtensionModule):
 
     # https://www.python.org/dev/peps/pep-0397/
     @staticmethod
-    def _get_win_pythonpath(self, name_or_path, is_debug):
+    def _get_win_pythonpath(name_or_path, is_debug):
         if name_or_path not in ['python2', 'python3']:
             return None
         if not shutil.which('py'):
@@ -683,7 +683,7 @@ class PythonModule(ExtensionModule):
             python = PythonExternalProgram(display_name, ext_prog=tmp_python)
 
             if not python.found() and mesonlib.is_windows():
-                is_debug = interpreter.environment.coredata.get_option(mesonlib.OptionKey('buildtype')) == 'debug'
+                is_debug = self.interpreter.environment.coredata.get_option(mesonlib.OptionKey('buildtype')) == 'debug'
                 pythonpath = self._get_win_pythonpath(name_or_path, is_debug)
                 if pythonpath is not None:
                     name_or_path = pythonpath
