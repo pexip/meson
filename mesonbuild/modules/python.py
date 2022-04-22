@@ -534,7 +534,9 @@ class PythonInstallation(ExternalProgramHolder):
                 if dep.found():
                     break
             if required and not dep.found():
-                raise mesonlib.MesonException('Python dependency not found')
+                raise mesonlib.MesonException(
+                    'Python dependency not found, have you installed python$VER-dev?'
+                )
 
         return dep
 
