@@ -102,7 +102,7 @@ class VisualStudioLikeCompiler(Compiler, metaclass=abc.ABCMeta):
     # See: https://ninja-build.org/manual.html#_deps
     # Assume UTF-8 sources by default, but self.unix_args_to_native() removes it
     # if `/source-charset` is set too.
-    always_args = ['/nologo', '/showIncludes', '/utf-8']
+    always_args = ['/nologo', '/showIncludes']
     warn_args = {
         '0': [],
         '1': ['/W2'],
