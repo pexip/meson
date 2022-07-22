@@ -616,6 +616,15 @@ if T.TYPE_CHECKING:
         disabler: bool
         modules: T.List[str]
 
+def _execute_cmd(cmd):
+    _, stdout, _ = mesonlib.Popen_safe(cmd)
+    return stdout.strip()
+
+def _get_python_path (py_cmd):
+    return _execute_cmd(py_cmd + ['-c', "import sysconfig; print(sysconfig.get_config_var('BINDIR'))"])
+
+def _get_python_version(py_cmd):
+    return _execute_cmd(py_cmd + ["-c", "import platform; print(platform.python_version())"])
 
 class PythonModule(ExtensionModule):
 
@@ -629,21 +638,32 @@ class PythonModule(ExtensionModule):
     # https://www.python.org/dev/peps/pep-0397/
     @staticmethod
     def _get_win_pythonpath(name_or_path, is_debug):
-        if name_or_path not in ['python2', 'python3']:
+        python_cmd = None
+        is_py = name_or_path.endswith('py.exe')
+        if not is_py and name_or_path not in ['python2', 'python3']:
             return None
         if not shutil.which('py'):
             # program not installed, return without an exception
             return None
-        ver = {'python2': '-2', 'python3': '-3'}[name_or_path]
-        cmd = ['py', ver, '-c', "import sysconfig; print(sysconfig.get_config_var('BINDIR'))"]
-        _, stdout, _ = mesonlib.Popen_safe(cmd)
-        directory = stdout.strip()
-        if os.path.exists(directory):
-            if name_or_path == 'python3' and is_debug:
-                return os.path.join(directory, 'python_d')
-            return os.path.join(directory, 'python')
+        
+        if is_py:
+            # use py's default version
+            python_cmd = ['py']
         else:
+            ver = {'python2': '-2', 'python3': '-3'}[name_or_path]
+            python_cmd = ['py', ver]
+        
+        python_path = _get_python_path(python_cmd)
+        if not os.path.exists(python_path):
             return None
+        
+        python_version = _get_python_version(python_cmd)
+        is_python3 = python_version is not None and python_version.startswith('3')
+        if is_python3 and is_debug:
+            return os.path.join(python_path, 'python_d')
+
+        return os.path.join(python_path, 'python')
+        
 
     @disablerIfNotFound
     @typed_pos_args('python.find_installation', optargs=[str])
@@ -684,7 +704,7 @@ class PythonModule(ExtensionModule):
             tmp_python = ExternalProgram.from_entry(display_name, name_or_path)
             python = PythonExternalProgram(display_name, ext_prog=tmp_python)
 
-            if not python.found() and mesonlib.is_windows():
+            if mesonlib.is_windows():
                 is_debug = self.interpreter.environment.coredata.get_option(mesonlib.OptionKey('buildtype')) == 'debug'
                 pythonpath = self._get_win_pythonpath(name_or_path, is_debug)
                 if pythonpath is not None:
