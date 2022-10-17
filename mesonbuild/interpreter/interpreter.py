@@ -3049,8 +3049,8 @@ class Interpreter(InterpreterBase, HoldableObject):
             return
         if project_root not in norm.parents:
             raise InterpreterException(f'Sandbox violation: Tried to grab {inputtype} {norm.name} outside current (sub)project.')
-        if subproject_dir == norm or subproject_dir in norm.parents:
-            raise InterpreterException(f'Sandbox violation: Tried to grab {inputtype} {norm.name} from a nested subproject.')
+        #if subproject_dir == norm or subproject_dir in norm.parents:
+        #    raise InterpreterException(f'Sandbox violation: Tried to grab {inputtype} {norm.name} from a nested subproject.')
 
     @T.overload
     def source_strings_to_files(self, sources: T.List['mesonlib.FileOrString'], strict: bool = True) -> T.List['mesonlib.File']: ...
