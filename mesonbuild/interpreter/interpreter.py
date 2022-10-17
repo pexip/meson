@@ -3156,6 +3156,21 @@ class Interpreter(InterpreterBase, HoldableObject):
         do_validate_within_subproject(norm)
         self.validated_cache.add(fname)
 
+        # if srcdir not in norm.parents:
+            # Grabbing files outside the source tree is ok.
+            # This is for vendor stuff like:
+            #
+            # /opt/vendorsdk/src/file_with_license_restrictions.c
+            # return
+        # project_root = Path(srcdir, self.root_subdir)
+        # subproject_dir = project_root / self.subproject_dir
+        # if norm == project_root:
+            # return
+        # if project_root not in norm.parents:
+            # raise InterpreterException(f'Sandbox violation: Tried to grab {inputtype} {norm.name} outside current (sub)project.')
+        #if subproject_dir == norm or subproject_dir in norm.parents:
+        #    raise InterpreterException(f'Sandbox violation: Tried to grab {inputtype} {norm.name} from a nested subproject.')
+
     @T.overload
     def source_strings_to_files(self, sources: T.List['mesonlib.FileOrString'], strict: bool = True) -> T.List['mesonlib.File']: ...
 
