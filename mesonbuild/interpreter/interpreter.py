@@ -3142,7 +3142,7 @@ class Interpreter(InterpreterBase, HoldableObject):
             return
 
         norm = os.path.abspath(os.path.join(srcdir, fname))
-        do_validate_within_subproject(norm)
+        # do_validate_within_subproject(norm)
         self.validated_cache.add(fname)
 
     @T.overload
