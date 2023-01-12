@@ -563,10 +563,6 @@ class PythonInstallation(ExternalProgramHolder):
         split, suffix = self.suffix.rsplit('.', 1)
         args[0] += split
 
-        if mesonlib.is_windows():
-            if self.major_version == 3 and self.is_debug:
-                args[0] += '_d'
-
         kwargs['name_prefix'] = ''
         kwargs['name_suffix'] = suffix
 
