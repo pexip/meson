@@ -73,6 +73,9 @@ class HoldableObject(metaclass=abc.ABCMeta):
     ''' Dummy base class for all objects that can be
         held by an interpreter.baseobjects.ObjectHolder '''
 
+    def display_repr(self) -> str:
+        return type(self).__name__ + repr(self.__dict__)
+
 EnvInitValueType = T.Dict[str, T.Union[str, T.List[str]]]
 
 class EnvironmentVariables(HoldableObject):
