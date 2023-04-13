@@ -68,8 +68,8 @@ else:
         defaults['objc'] = ['clang']
         defaults['objcpp'] = ['clang++']
     else:
-        defaults['c'] = ['cc', 'gcc', 'clang', 'nvc', 'pgcc', 'icc']
-        defaults['cpp'] = ['c++', 'g++', 'clang++', 'nvc++', 'pgc++', 'icpc']
+        defaults['c'] = ['cc', 'gcc', 'clang', 'nvc', 'pgcc', 'icc', 'icx']
+        defaults['cpp'] = ['c++', 'g++', 'clang++', 'nvc++', 'pgc++', 'icpc', 'icpx']
         defaults['objc'] = ['cc', 'gcc', 'clang']
         defaults['objcpp'] = ['c++', 'g++', 'clang++']
     defaults['fortran'] = ['gfortran', 'flang', 'nvfortran', 'pgfortran', 'ifort', 'g95']
@@ -426,7 +426,7 @@ def _detect_c_or_cpp_compiler(env: 'Environment', lang: str, for_machine: Machin
             return cls(
                 compiler, version, for_machine, is_cross, info, target,
                 exe_wrap, linker=linker)
-        if 'clang' in out or 'Clang' in out:
+        if 'clang' in out or 'Clang' in out or 'oneAPI DPC++/C++ Compiler' in out:
             linker = None
 
             defines = _get_clang_compiler_defines(compiler)

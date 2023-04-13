@@ -7,7 +7,7 @@ project('trivial test',
 sources = 'trivial.c'
 
 cc = meson.get_compiler('c')
-if cc.get_id() == 'intel'
+if cc.get_id().startswith('intel')
   # Error out if the -std=xxx option is incorrect
   add_project_arguments('-diag-error', '10159', language : 'c')
 elif cc.get_id() == 'intel-cl'
