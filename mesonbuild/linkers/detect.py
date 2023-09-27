@@ -201,7 +201,7 @@ def guess_nix_linker(env: 'Environment', compiler: T.List[str], comp_class: T.Ty
         mlog.debug(f'linker stderr:\n{newerr}')
 
         for line in newerr.split('\n'):
-            if 'PROJECT:ld' in line:
+            if 'PROJECT:ld' in line or 'PROJECT:dyld' in line:
                 v = line.split('-')[1]
                 break
         else:
