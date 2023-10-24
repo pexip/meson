@@ -53,9 +53,9 @@ if is_windows():
     # cl.exe that returns *exactly the same thing* that microsofts
     # cl.exe does, and if icl is present, it's almost certainly what
     # you want.
-    defaults['c'] = ['icl', 'cl', 'cc', 'gcc', 'clang', 'clang-cl', 'pgcc']
+    defaults['c'] = ['icl', 'cl', 'cc', 'gcc', 'clang', 'clang-cl', 'pgcc', 'icx']
     # There is currently no pgc++ for Windows, only for  Mac and Linux.
-    defaults['cpp'] = ['icl', 'cl', 'c++', 'g++', 'clang++', 'clang-cl']
+    defaults['cpp'] = ['icl', 'cl', 'c++', 'g++', 'clang++', 'clang-cl', 'icpx']
     defaults['fortran'] = ['ifort', 'gfortran', 'flang', 'pgfortran', 'g95']
     # Clang and clang++ are valid, but currently unsupported.
     defaults['objc'] = ['cc', 'gcc']
@@ -462,6 +462,15 @@ def _detect_c_or_cpp_compiler(env: 'Environment', lang: str, for_machine: Machin
             return cls(
                 compiler, version, for_machine, is_cross, info, target,
                 exe_wrap, linker=linker)
+        if 'Intel(R) oneAPI DPC++/C++ Compiler for applications' in err:
+            version = search_version(err)
+            target = 'x86' if 'IA-32' in err else 'x86_64'
+            cls = c.IntelLLVMClCCompiler if lang == 'c' else cpp.IntelLLVMClCPPCompiler
+            env.coredata.add_lang_args(cls.language, cls, for_machine, env)
+            linker = linkers.XilinkDynamicLinker(for_machine, [], version=version)
+            return cls(
+                compiler, version, for_machine, is_cross, info, target,
+                exe_wrap, linker=linker)
         if 'Microsoft' in out or 'Microsoft' in err:
             # Latest versions of Visual Studio print version
             # number to stderr but earlier ones print version
@@ -506,6 +515,12 @@ def _detect_c_or_cpp_compiler(env: 'Environment', lang: str, for_machine: Machin
                 info, exe_wrap, linker=linker)
         if '(ICC)' in out:
             cls = c.IntelCCompiler if lang == 'c' else cpp.IntelCPPCompiler
+            l = guess_nix_linker(env, compiler, cls, version, for_machine)
+            return cls(
+                ccache + compiler, version, for_machine, is_cross, info,
+                exe_wrap, full_version=full_version, linker=l)
+        if 'Intel(R) oneAPI' in out:
+            cls = c.IntelLLVMCCompiler if lang == 'c' else cpp.IntelLLVMCPPCompiler
             l = guess_nix_linker(env, compiler, cls, version, for_machine)
             return cls(
                 ccache + compiler, version, for_machine, is_cross, info,
