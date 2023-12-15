@@ -784,11 +784,11 @@ class Backend:
             temp = '/'.join(parts[-5:])
             # is it shorter to hash the beginning of the path?
             if len(fname) > len(temp) + 41:
-                hashed = hashlib.sha1(fname.encode('utf-8')).hexdigest() + '_'
+                hashed = hashlib.sha256(fname.encode('utf-8')).hexdigest() + '_'
                 fname = temp
         for ch in ('/', '\\', ':'):
             fname = fname.replace(ch, '_')
-        return hashed + fname
+        return hashlib.sha256((hashed + fname).encode('utf-8')).hexdigest()
 
     def object_filename_from_source(self, target: build.BuildTarget, source: 'FileOrString') -> str:
         assert isinstance(source, mesonlib.File)
