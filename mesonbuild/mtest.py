@@ -1867,6 +1867,7 @@ class TestHarness:
         wrap = []  # type: T.List[str]
         if options.gdb:
             wrap = [options.gdb_path, '--quiet']
+            wrap += ['-iex', 'set follow-fork-mode child']
             if options.repeat > 1:
                 wrap += ['-ex', 'run', '-ex', 'quit']
             # Signal the end of arguments to gdb
