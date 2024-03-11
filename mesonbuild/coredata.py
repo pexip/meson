@@ -111,6 +111,7 @@ class UserOption(T.Generic[_T], HoldableObject):
         self.yielding = yielding
         self.deprecated = deprecated
         self.readonly = False
+        self.user_set = False
 
     def listify(self, value: T.Any) -> T.List[T.Any]:
         return [value]
@@ -125,10 +126,14 @@ class UserOption(T.Generic[_T], HoldableObject):
     def validate_value(self, value: T.Any) -> _T:
         raise RuntimeError('Derived option class did not override validate_value.')
 
-    def set_value(self, newvalue: T.Any) -> bool:
+    def set_value(self, newvalue: T.Any, user_set: bool = False) -> bool:
         oldvalue = getattr(self, 'value', None)
         self.value = self.validate_value(newvalue)
+        self.user_set = user_set
         return self.value != oldvalue
+
+    def is_user_set(self) -> bool:
+      return self.user_set
 
 class UserStringOption(UserOption[str]):
     def __init__(self, description: str, value: T.Any, yielding: bool = DEFAULT_YIELDING,
@@ -803,7 +808,7 @@ class CoreData:
             mlog.deprecation(f'Option {key.name!r} is replaced by {newname!r}')
             dirty |= self.set_option(newkey, value, first_invocation)
 
-        changed = opt.set_value(value)
+        changed = opt.set_value(value, True)
         if changed and opt.readonly and not first_invocation:
             raise MesonException(f'Tried modify read only option {str(key)!r}')
         dirty |= changed
