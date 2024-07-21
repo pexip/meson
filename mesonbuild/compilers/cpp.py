@@ -755,7 +755,6 @@ class IntelCPPCompiler(IntelGnuLikeCompiler, CPPCompiler):
                 'gnu++03': 'gnu++98'
             }
             args.append('-std=' + remap_cpp03.get(std, std))
-
         return args
 
     def get_option_link_args(self, target: 'BuildTarget', env: 'Environment', subproject: T.Optional[str] = None) -> T.List[str]:
