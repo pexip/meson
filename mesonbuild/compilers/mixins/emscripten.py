@@ -48,8 +48,11 @@ class EmscriptenMixin(Compiler):
             suffix = 'o'
         return os.path.join(dirname, 'output.' + suffix)
 
+    def thread_flags(self, env: 'Environment') -> T.List[str]:
+        return []
+
     def thread_link_flags(self, env: 'Environment') -> T.List[str]:
-        args = ['-pthread']
+        args = []
         count = env.coredata.optstore.get_value(OptionKey(f'{self.language}_thread_count', machine=self.for_machine))
         assert isinstance(count, int)
         if count:
