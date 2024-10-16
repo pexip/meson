@@ -786,7 +786,7 @@ class Backend:
             if len(fname) > len(temp) + 41:
                 hashed = hashlib.sha256(fname.encode('utf-8')).hexdigest() + '_'
                 fname = temp
-        for ch in ('/', '\\', ':'):
+        for ch in ('/', '\\', ':', '.', '..'):
             fname = fname.replace(ch, '_')
         full = hashlib.sha256((hashed + fname).encode('utf-8')).hexdigest()
         cname = full + '_' + fname
