@@ -788,7 +788,9 @@ class Backend:
                 fname = temp
         for ch in ('/', '\\', ':'):
             fname = fname.replace(ch, '_')
-        return hashlib.sha256((hashed + fname).encode('utf-8')).hexdigest()
+        full = hashlib.sha256((hashed + fname).encode('utf-8')).hexdigest()
+        cname = full + '_' + fname
+        return cname
 
     def object_filename_from_source(self, target: build.BuildTarget, source: 'FileOrString') -> str:
         assert isinstance(source, mesonlib.File)
