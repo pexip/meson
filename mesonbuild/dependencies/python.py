@@ -227,6 +227,8 @@ class _PythonDependencyBase(_Base):
                         libpath = Path('libpypy3-c.dll')
                     elif imp_lower == 'pypy':
                         libpath = Path(f'libpypy{verdot}-c.dll')
+                    elif self.major_version == 3 and self.is_debug:
+                        libpath = Path(f'python{vernum}_d.dll')
                     else:
                         libpath = Path(f'python{vernum}.dll')
                 else:
@@ -338,6 +340,7 @@ class PythonSystemDependency(SystemDependency, _PythonDependencyBase):
                  kwargs: T.Dict[str, T.Any], installation: 'BasicPythonExternalProgram'):
         SystemDependency.__init__(self, name, environment, kwargs)
         _PythonDependencyBase.__init__(self, installation, kwargs.get('embed', False))
+        self.is_debug = environment.coredata.get_option(mesonlib.OptionKey('buildtype')) == 'debug'
 
         # match pkg-config behavior
         if self.link_libpython:
