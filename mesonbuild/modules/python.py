@@ -109,6 +109,7 @@ class PythonInstallation(ExternalProgramHolder):
         info = python.info
         prefix = self.interpreter.environment.coredata.get_option(mesonlib.OptionKey('prefix'))
         assert isinstance(prefix, str), 'for mypy'
+        self.is_debug = self.interpreter.environment.coredata.get_option(mesonlib.OptionKey('buildtype')) == 'debug'
         self.variables = info['variables']
         self.suffix = info['suffix']
         self.paths = info['paths']
@@ -116,6 +117,10 @@ class PythonInstallation(ExternalProgramHolder):
         self.platlib_install_path = os.path.join(prefix, python.platlib)
         self.purelib_install_path = os.path.join(prefix, python.purelib)
         self.version = info['version']
+        if mesonlib.version_compare(self.version, '>= 3.0'):
+            self.major_version = 3
+        else:
+            self.major_version = 2
         self.platform = info['platform']
         self.is_pypy = info['is_pypy']
         self.link_libpython = info['link_libpython']
@@ -299,35 +304,63 @@ class PythonModule(ExtensionModule):
             'find_installation': self.find_installation,
         })
 
+    @staticmethod    
+    def _execute_cmd(cmd):
+        _, stdout, _ = mesonlib.Popen_safe(cmd)
+        return stdout.strip()
+
+    @staticmethod    
+    def _get_python_path (py_cmd):
+        return PythonModule._execute_cmd(py_cmd + ['-c', "import sysconfig; print(sysconfig.get_config_var('BINDIR'))"])
+
+    @staticmethod    
+    def _get_python_version(py_cmd):
+        return PythonModule._execute_cmd(py_cmd + ["-c", "import platform; print(platform.python_version())"])
+
     # https://www.python.org/dev/peps/pep-0397/
     @staticmethod
-    def _get_win_pythonpath(name_or_path: str) -> T.Optional[str]:
-        if name_or_path not in ['python2', 'python3']:
-            return None
+    def _get_win_pythonpath(name_or_path: str, is_debug: bool) -> T.Optional[str]:
         if not shutil.which('py'):
             # program not installed, return without an exception
             return None
-        ver = {'python2': '-2', 'python3': '-3'}[name_or_path]
-        cmd = ['py', ver, '-c', "import sysconfig; print(sysconfig.get_config_var('BINDIR'))"]
-        _, stdout, _ = mesonlib.Popen_safe(cmd)
-        directory = stdout.strip()
-        if os.path.exists(directory):
-            return os.path.join(directory, 'python')
-        else:
+
+        is_py = name_or_path.endswith('py.exe')
+        if not is_py and name_or_path not in ['python2', 'python3']:
             return None
+
+        python_cmd = None
+        if is_py:
+            # use py's default version
+            python_cmd = ['py']
+        else:
+            ver = {'python2': '-2', 'python3': '-3'}[name_or_path]
+            python_cmd = ['py', ver]
+
+        python_path = PythonModule._get_python_path(python_cmd)
+        if not os.path.exists(python_path):
+            return None
+
+        python_version = PythonModule._get_python_version(python_cmd)
+        is_python3 = python_version is not None and python_version.startswith('3')
+        if is_python3 and is_debug:
+            return os.path.join(python_path, 'python_d')
+        
+        return os.path.join(python_path, 'python')
 
     def _find_installation_impl(self, state: 'ModuleState', display_name: str, name_or_path: str, required: bool) -> ExternalProgram:
         if not name_or_path:
             python = PythonExternalProgram('python3', mesonlib.python_command)
         else:
-            tmp_python = ExternalProgram.from_entry(display_name, name_or_path)
-            python = PythonExternalProgram(display_name, ext_prog=tmp_python)
-
-            if not python.found() and mesonlib.is_windows():
-                pythonpath = self._get_win_pythonpath(name_or_path)
+            python = None
+            if mesonlib.is_windows():
+                is_debug = self.interpreter.environment.coredata.get_option(mesonlib.OptionKey('buildtype')) == 'debug'
+                pythonpath = PythonModule._get_win_pythonpath(name_or_path, is_debug)
                 if pythonpath is not None:
                     name_or_path = pythonpath
                     python = PythonExternalProgram(name_or_path)
+            else:
+                tmp_python = ExternalProgram.from_entry(display_name, name_or_path)
+                python = PythonExternalProgram(display_name, ext_prog=tmp_python)
 
             # Last ditch effort, python2 or python3 can be named python
             # on various platforms, let's not give up just yet, if an executable

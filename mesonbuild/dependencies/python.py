@@ -188,6 +188,7 @@ class PythonSystemDependency(SystemDependency, _PythonDependencyBase):
                  kwargs: T.Dict[str, T.Any], installation: 'BasicPythonExternalProgram'):
         SystemDependency.__init__(self, name, environment, kwargs)
         _PythonDependencyBase.__init__(self, installation, kwargs.get('embed', False))
+        self.is_debug = environment.coredata.get_option(mesonlib.OptionKey('buildtype')) == 'debug'
 
         # match pkg-config behavior
         if self.link_libpython:
@@ -273,7 +274,8 @@ class PythonSystemDependency(SystemDependency, _PythonDependencyBase):
                     else:
                         libpath = Path(f'python{vernum}.dll')
                 else:
-                    libpath = Path('libs') / f'python{vernum}.lib'
+                    suffix = f'_d' if self.major_version == 3 and self.is_debug else ''
+                    libpath = Path('libs') / f'python{vernum}{suffix}.lib'
                     # For a debug build, pyconfig.h may force linking with
                     # pythonX_d.lib (see meson#10776). This cannot be avoided
                     # and won't work unless we also have a debug build of
