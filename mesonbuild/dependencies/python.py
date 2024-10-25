@@ -261,6 +261,12 @@ class _PythonDependencyBase(_Base):
                             certainly result in a failed build. Prefer using a release build
                             type or a debug Python interpreter.
                             '''))
+
+                    # pexhack, rework together with meson-peeps
+                    if (is_debug_build):
+                        suffix = f'_d' if self.major_version == 3 else ''
+                        libpath = Path('libs') / f'python{vernum}{suffix}.lib'
+
             # base_prefix to allow for virtualenvs.
             lib = Path(self.variables.get('base_prefix')) / libpath
         elif self.platform.startswith('mingw'):
