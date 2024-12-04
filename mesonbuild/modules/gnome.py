@@ -986,6 +986,9 @@ class GnomeModule(ExtensionModule):
         # SYSROOT, etc.
         run_env = PkgConfigDependency.get_env(state.environment, MachineChoice.HOST, uninstalled=True)
 
+        builddir = os.path.join(state.environment.get_build_dir(), state.subdir)
+        girfile_path = os.path.join(builddir, girfile)
+
         return GirTarget(
             girfile,
             state.subdir,
@@ -993,7 +996,7 @@ class GnomeModule(ExtensionModule):
             state.environment,
             scan_command,
             generated_files,
-            [girfile],
+            [girfile_path],
             build_by_default=kwargs['build_by_default'],
             extra_depends=depends,
             install=install,
