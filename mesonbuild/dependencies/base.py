@@ -267,7 +267,7 @@ class Dependency(HoldableObject):
             else:
                 link_args.append(arg)
 
-        new_dep = InternalDependency(self.version, [], self.compile_args, link_args, [], [], self.sources, self.ext_deps, None, [], [], self.objects)
+        new_dep = InternalDependency(self.version, [], self.compile_args, link_args, [], [], self.sources, [], self.ext_deps, None, [], [], self.objects)
         return new_dep, archives
 
 class InternalDependency(Dependency):
