@@ -312,7 +312,7 @@ class ClangCPPCompiler(_StdCPPLibMixin, ClangCPPStds, ClangCompiler, CPPCompiler
         return []
 
     def is_libcpp_enable_assertions_deprecated(self) -> bool:
-        return version_compare(self.version, ">=18")
+        return version_compare(self.version, ">=17")
 
     def get_assert_args(self, disable: bool, env: 'Environment') -> T.List[str]:
         if disable:
