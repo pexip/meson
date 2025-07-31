@@ -115,7 +115,7 @@ class PythonInstallation(_ExternalProgramHolder['PythonExternalProgram']):
         info = python.info
         prefix = self.interpreter.environment.coredata.optstore.get_value_for(OptionKey('prefix'))
         assert isinstance(prefix, str), 'for mypy'
-        self.is_debug = self.interpreter.environment.coredata.get_option(mesonlib.OptionKey('buildtype')) == 'debug'
+        self.is_debug = self.interpreter.environment.coredata.optstore.get_value_for(OptionKey('buildtype')) == 'debug'
         self.variables = info['variables']
         self.suffix = info['suffix']
         self.limited_api_suffix = info['limited_api_suffix']
