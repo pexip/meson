@@ -431,8 +431,8 @@ class Installer:
         if not os.path.exists(abs_target) and not allow_missing:
             raise MesonException(f'Tried to install symlink to missing file {abs_target}')
         if os.path.exists(link):
-            if not os.path.islink(link):
-                raise MesonException(f'Destination {link!r} already exists and is not a symlink')
+            # if not os.path.islink(link):
+            #     raise MesonException(f'Destination {link!r} already exists and is not a symlink')
             self.remove(link)
         if not self.printed_symlink_error:
             self.log(f'Installing symlink pointing to {target} to {link}')
