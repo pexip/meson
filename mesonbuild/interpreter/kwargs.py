@@ -516,3 +516,5 @@ class FuncDependency(ExtractRequired):
     private_headers: bool
     static: T.Optional[bool]
     version: T.List[str]
+    pkgconfig_define: PkgConfigDefineType
+

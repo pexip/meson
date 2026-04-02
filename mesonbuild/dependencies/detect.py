@@ -46,7 +46,7 @@ def get_dep_identifier(name: str, kwargs: DependencyObjectKWs) -> 'TV_DepID':
     nkwargs = T.cast('DependencyObjectKWs', {k.name: k.default for k in DEPENDENCY_KWS})
     nkwargs.update(kwargs)
 
-    assert len(DEPENDENCY_KWS) == 21, \
+    assert len(DEPENDENCY_KWS) == 22, \
            'Extra kwargs have been added to dependency(), please review if it makes sense to handle it here'
     for key, value in nkwargs.items():
         # 'version' is irrelevant for caching; the caller must check version matches
@@ -69,6 +69,9 @@ def get_dep_identifier(name: str, kwargs: DependencyObjectKWs) -> 'TV_DepID':
         elif isinstance(value, enum.Enum):
             value = value.value
             assert isinstance(value, str), 'for mypy'
+        elif isinstance(value, tuple):
+            # Already a hashable tuple (e.g. pkgconfig_define is a tuple of (name, val) pairs)
+            pass
         else:
             assert value is None or isinstance(value, (str, bool, int)), value
         identifier = (*identifier, (key, value),)

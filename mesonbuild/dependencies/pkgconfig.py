@@ -313,6 +313,8 @@ class PkgConfigDependency(ExternalDependency):
         self.name = name
         self.is_libtool = False
         self.extra_paths = extra_paths or []
+        self.pkg_config_define: T.Optional[T.Tuple[T.Tuple[str, str], ...]] = T.cast(
+            'T.Optional[T.Tuple[T.Tuple[str, str], ...]]', kwargs.get('pkgconfig_define'))
         pkgconfig = PkgConfigInterface.instance(self.env, self.for_machine, self.silent, self.extra_paths)
         if not pkgconfig:
             msg = f'Pkg-config for machine {self.for_machine} not found. Giving up.'
@@ -386,7 +388,7 @@ class PkgConfigDependency(ExternalDependency):
             # gfortran doesn't appear to look in system paths for INCLUDE files,
             # so don't allow pkg-config to suppress -I flags for system paths
             allow_system = True
-        cflags = self.pkgconfig.cflags(self.name, allow_system)
+        cflags = self.pkgconfig.cflags(self.name, allow_system, define_variable=self.pkg_config_define)
         self.compile_args = self._convert_mingw_paths(cflags)
 
     def _search_libs(self, libs_in: ImmutableListProtocol[str], raw_libs_in: ImmutableListProtocol[str]) -> T.Tuple[T.List[str], T.List[str]]:
@@ -552,11 +554,11 @@ class PkgConfigDependency(ExternalDependency):
     def _set_libs(self) -> None:
         # Force pkg-config to output -L fields even if they are system
         # paths so we can do manual searching with cc.find_library() later.
-        libs = self.pkgconfig.libs(self.name, self.static, allow_system=True)
+        libs = self.pkgconfig.libs(self.name, self.static, allow_system=True, define_variable=self.pkg_config_define)
         # Also get the 'raw' output without -Lfoo system paths for adding -L
         # args with -lfoo when a library can't be found, and also in
         # gnome.generate_gir + gnome.gtkdoc which need -L -l arguments.
-        raw_libs = self.pkgconfig.libs(self.name, self.static, allow_system=False)
+        raw_libs = self.pkgconfig.libs(self.name, self.static, allow_system=False, define_variable=self.pkg_config_define)
         self.link_args, self.raw_link_args = self._search_libs(libs, raw_libs)
 
     def extract_field(self, la_file: str, fieldname: str) -> T.Optional[str]:

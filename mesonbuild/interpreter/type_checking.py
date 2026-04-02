@@ -1041,4 +1041,5 @@ DEPENDENCY_KWS: T.List[KwargInfo] = [
     KwargInfo('static', (bool, NoneType)),
     KwargInfo('version', ContainerTypeInfo(list, str), listify=True, default=[]),
     KwargInfo('prefix', str, default=''),
+    PKGCONFIG_DEFINE_KW,
 ]
