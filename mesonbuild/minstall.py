@@ -53,6 +53,8 @@ if T.TYPE_CHECKING:
         skip_subprojects: str
         tags: str
         strip: bool
+        install_tests: bool
+        tests_prefix: T.Optional[str]
 
 
 symlink_warning = '''\
@@ -86,6 +88,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help='Install only targets having one of the given tags. (Since 0.60.0)')
     parser.add_argument('--strip', action='store_true',
                         help='Strip targets even if strip option was not set during configure. (Since 0.62.0)')
+    parser.add_argument('--install-tests', default=False, action='store_true',
+                        dest='install_tests',
+                        help='Also install tests so they can be run from the install location with meson test.')
+    parser.add_argument('--tests-prefix', default=None, dest='tests_prefix',
+                        help='Directory under prefix to install tests into (default: tests). '
+                             'Only used when --install-tests is given.')
 
 class DirMaker:
     def __init__(self, lf: T.TextIO, makedirs: T.Callable[..., None]):
@@ -886,4 +894,22 @@ def run(opts: 'ArgumentType') -> int:
             profile.runctx('installer.do_install(datafilename)', globals(), locals(), filename=fname)
         else:
             installer.do_install(datafilename)
+
+    if opts.install_tests:
+        from . import minstalltests
+        import argparse as _argparse
+        # Build an options namespace compatible with minstalltests.run().
+        # The build directory is opts.wd (already resolved), rebuild was
+        # already done above, and destdir/quiet are forwarded as-is.
+        it_opts = _argparse.Namespace(
+            wd=opts.wd,
+            destdir=opts.destdir,
+            tests_prefix=opts.tests_prefix,
+            no_rebuild=True,   # rebuild already happened above
+            quiet=opts.quiet,
+        )
+        ret = minstalltests.run(it_opts)
+        if ret != 0:
+            return ret
+
     return 0
