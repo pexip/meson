@@ -1745,6 +1745,16 @@ class TestHarness:
             raise TestException(f'Directory {self.options.wd!r} does not seem to be a Meson build directory.')
         with datafile.open('rb') as f:
             objs = check_testdata(pickle.load(f))
+
+        # If this is an installed-tests directory, resolve the relocatable
+        # placeholder tokens (@@INSTALLEDTESTSDIR@@, @@INSTALLPREFIX@@)
+        # so that the tests work regardless of where the tree was moved.
+        marker = Path('meson-private') / 'installed-tests.marker'
+        if marker.is_file():
+            from .minstalltests import resolve_installed_test_placeholders
+            resolve_installed_test_placeholders(
+                objs, self.options.wd, str(marker))
+
         return objs
 
     def __enter__(self) -> 'TestHarness':
@@ -2291,6 +2301,12 @@ def run(options: argparse.Namespace) -> int:
     b = build.load(options.wd)
     need_vsenv = T.cast('bool', b.environment.coredata.optstore.get_value_for(OptionKey('vsenv')))
     setup_vsenv(need_vsenv)
+
+    # Auto-detect installed test directories: if the marker file exists,
+    # there is nothing to rebuild — skip the rebuild step automatically.
+    installed_marker = os.path.join(options.wd, 'meson-private', 'installed-tests.marker')
+    if os.path.isfile(installed_marker):
+        options.no_rebuild = True
 
     if not options.no_rebuild:
         backend = b.environment.coredata.optstore.get_value_for(OptionKey('backend'))
