@@ -795,7 +795,7 @@ class InstallTestsCommandTests(BasePlatformTests):
         for dirpath, dirnames, filenames in os.walk(prefix_root):
             # Skip the tests subtree
             rel = os.path.relpath(dirpath, prefix_root)
-            if rel.startswith('tests'):
+            if rel == 'tests' or rel.startswith('tests' + os.sep):
                 continue
             for fn in filenames:
                 if fn.startswith('libmylib') and '.so' in fn:
