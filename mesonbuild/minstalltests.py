@@ -204,9 +204,15 @@ def run(options: argparse.Namespace) -> int:
             if not options.quiet:
                 print(f'Installing {dat_file} to {dst}')
 
+    # Write a marker file so that `meson test -C <dir>` can detect this is
+    # an installed-tests directory and automatically skip the rebuild step.
+    marker_path = os.path.join(installed_private_dir, 'installed-tests.marker')
+    with open(marker_path, 'w', encoding='utf-8') as f:
+        f.write('This directory contains installed Meson tests.\n')
+
     if not options.quiet:
         print(f'\nInstalled {len(installed_tests)} tests to {install_root}')
-        print(f'Run tests with: meson test --no-rebuild -C {install_root}')
+        print(f'Run tests with: meson test -C {install_root}')
 
     return 0
 

@@ -2292,6 +2292,12 @@ def run(options: argparse.Namespace) -> int:
     need_vsenv = T.cast('bool', b.environment.coredata.optstore.get_value_for(OptionKey('vsenv')))
     setup_vsenv(need_vsenv)
 
+    # Auto-detect installed test directories: if the marker file exists,
+    # there is nothing to rebuild — skip the rebuild step automatically.
+    installed_marker = os.path.join(options.wd, 'meson-private', 'installed-tests.marker')
+    if os.path.isfile(installed_marker):
+        options.no_rebuild = True
+
     if not options.no_rebuild:
         backend = b.environment.coredata.optstore.get_value_for(OptionKey('backend'))
         if backend == 'none':

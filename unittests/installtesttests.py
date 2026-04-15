@@ -270,7 +270,10 @@ class InstallTestsCommandTests(BasePlatformTests):
                     self.assertPathExists(fname)
 
     def test_install_tests_run_installed(self):
-        """Test that installed tests can be run with 'meson test --no-rebuild'."""
+        """Test that installed tests can be run with 'meson test -C <dir>'.
+
+        The installed test directory is auto-detected (no --no-rebuild needed).
+        """
         testdir = os.path.join(self.common_test_dir, '1 trivial')
         self.init(testdir)
         self.build()
@@ -280,8 +283,9 @@ class InstallTestsCommandTests(BasePlatformTests):
 
         install_root = self._get_installed_test_dir(destdir)
 
-        # Run 'meson test --no-rebuild -C <install_root>' and verify it succeeds
-        cmd = self.meson_command + ['test', '--no-rebuild', '-C', install_root]
+        # Run 'meson test -C <install_root>' WITHOUT --no-rebuild.
+        # The installed-tests marker should make meson auto-skip rebuild.
+        cmd = self.meson_command + ['test', '-C', install_root]
         result = self._run(cmd)
         self.assertIn('OK', result)
 
@@ -388,8 +392,8 @@ class InstallTestsCommandTests(BasePlatformTests):
         self._install_tests(destdir=destdir)
         install_root = self._get_installed_test_dir(destdir)
 
-        # Run installed tests - should pass
-        cmd = self.meson_command + ['test', '--no-rebuild', '-C', install_root]
+        # Run installed tests WITHOUT --no-rebuild (auto-detected)
+        cmd = self.meson_command + ['test', '-C', install_root]
         result = self._run(cmd)
         self.assertIn('OK', result)
 
@@ -430,8 +434,8 @@ class InstallTestsCommandTests(BasePlatformTests):
         self._install_tests(destdir=destdir)
         install_root = self._get_installed_test_dir(destdir)
 
-        # Run installed tests - they need shared libs to be accessible
-        cmd = self.meson_command + ['test', '--no-rebuild', '-C', install_root]
+        # Run installed tests WITHOUT --no-rebuild (auto-detected)
+        cmd = self.meson_command + ['test', '-C', install_root]
         result = self._run(cmd)
         self.assertIn('OK', result)
 
@@ -589,3 +593,161 @@ class InstallTestsCommandTests(BasePlatformTests):
                     test.workdir.startswith(self.builddir),
                     f'Test workdir {test.workdir} should NOT reference the build dir'
                 )
+
+    def test_install_tests_marker_file_created(self):
+        """Test that install-tests creates the installed-tests marker file."""
+        testdir = os.path.join(self.common_test_dir, '1 trivial')
+        self.init(testdir)
+        self.build()
+
+        destdir = os.path.join(self.builddir, 'install-tests-dest')
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        marker = os.path.join(install_root, 'meson-private', 'installed-tests.marker')
+        self.assertPathExists(marker)
+
+    def test_install_tests_auto_skip_rebuild(self):
+        """Test that 'meson test -C <installed-dir>' auto-skips rebuild.
+
+        When running tests from an installed test directory, 'meson test'
+        should detect the marker file and automatically skip the rebuild
+        step, so the user does NOT need to pass --no-rebuild.
+        """
+        testdir = os.path.join(self.common_test_dir, '1 trivial')
+        self.init(testdir)
+        self.build()
+
+        destdir = os.path.join(self.builddir, 'install-tests-dest')
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        # Run tests without --no-rebuild; should succeed because of auto-detection
+        cmd = self.meson_command + ['test', '-C', install_root]
+        result = self._run(cmd)
+        self.assertIn('OK', result)
+
+    def test_install_tests_verbose_hint(self):
+        """Test that verbose install-tests output shows how to run tests."""
+        testdir = os.path.join(self.common_test_dir, '1 trivial')
+        self.init(testdir)
+        self.build()
+
+        destdir = os.path.join(self.builddir, 'install-tests-dest')
+        result = self._install_tests(destdir=destdir, quiet=False)
+        # The usage hint should NOT mention --no-rebuild (auto-detected)
+        self.assertIn('meson test -C', result)
+        self.assertNotIn('--no-rebuild', result)
+
+    def test_install_tests_destdir_via_env(self):
+        """Test that DESTDIR can be set via environment variable."""
+        testdir = os.path.join(self.common_test_dir, '1 trivial')
+        self.init(testdir)
+        self.build()
+
+        destdir = os.path.join(self.builddir, 'env-destdir')
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        self.assertPathExists(install_root)
+        self.assertPathExists(os.path.join(install_root, 'meson-private', 'meson_test_setup.dat'))
+        self.assertPathExists(os.path.join(install_root, 'meson-private', 'installed-tests.marker'))
+
+    def test_install_tests_destdir_via_flag(self):
+        """Test that --destdir flag overrides DESTDIR environment variable."""
+        testdir = os.path.join(self.common_test_dir, '1 trivial')
+        self.init(testdir)
+        self.build()
+
+        env_destdir = os.path.join(self.builddir, 'env-destdir')
+        flag_destdir = os.path.join(self.builddir, 'flag-destdir')
+
+        # Set DESTDIR env but also pass --destdir flag
+        cmd = self.meson_command + ['install-tests', '-C', self.builddir, '--no-rebuild',
+                                    '--destdir', flag_destdir]
+        self._run(cmd, override_envvars={'DESTDIR': env_destdir})
+
+        # Flag should win over env
+        flag_root = self._get_installed_test_dir(flag_destdir)
+        self.assertPathExists(flag_root)
+        self.assertPathExists(os.path.join(flag_root, 'meson-private', 'meson_test_setup.dat'))
+
+        # Env destdir should NOT have been used
+        self.assertPathDoesNotExist(env_destdir)
+
+    def test_install_tests_run_specific_test(self):
+        """Test running a specific installed test by name."""
+        testdir = os.path.join(self.common_test_dir, '41 test args')
+        self.init(testdir)
+        self.build()
+
+        destdir = os.path.join(self.builddir, 'install-tests-dest')
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        # Run only the 'command line arguments' test
+        cmd = self.meson_command + ['test', '-C', install_root,
+                                    'command line arguments']
+        result = self._run(cmd)
+        self.assertIn('OK', result)
+
+    def test_install_tests_list(self):
+        """Test listing installed tests."""
+        testdir = os.path.join(self.common_test_dir, '41 test args')
+        self.init(testdir)
+        self.build()
+
+        destdir = os.path.join(self.builddir, 'install-tests-dest')
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        cmd = self.meson_command + ['test', '-C', install_root, '--list']
+        result = self._run(cmd)
+        self.assertIn('command line arguments', result)
+
+    def test_install_tests_extra_paths_rewritten(self):
+        """Test that extra_paths entries pointing to build dir are rewritten."""
+        testdir = os.path.join(self.common_test_dir, '6 linkshared')
+        self.init(testdir)
+        self.build()
+
+        destdir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(destdir, ignore_errors=True))
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
+        with open(test_data, 'rb') as f:
+            tests = pickle.load(f)
+
+        for test in tests:
+            for p in test.extra_paths:
+                if os.path.isabs(p):
+                    self.assertFalse(
+                        p.startswith(self.builddir),
+                        f'extra_path {p} should NOT reference the build dir'
+                    )
+
+    def test_install_tests_env_paths_rewritten(self):
+        """Test that environment variable paths are rewritten."""
+        testdir = os.path.join(self.common_test_dir, '6 linkshared')
+        self.init(testdir)
+        self.build()
+
+        destdir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(destdir, ignore_errors=True))
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
+        with open(test_data, 'rb') as f:
+            tests = pickle.load(f)
+
+        for test in tests:
+            for method, name, values, sep in test.env.envvars:
+                for val in values:
+                    if isinstance(val, str) and os.path.isabs(val):
+                        self.assertFalse(
+                            val.startswith(self.builddir),
+                            f'Env var {name} value {val} should NOT reference the build dir'
+                        )
