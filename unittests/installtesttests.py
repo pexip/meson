@@ -768,3 +768,104 @@ class InstallTestsCommandTests(BasePlatformTests):
         # Tests dir should NOT exist for a normal install
         tests_root = self._get_installed_test_dir(destdir)
         self.assertPathDoesNotExist(tests_root)
+
+    def test_install_tests_no_lib_duplication(self):
+        """Test that libraries already installed by 'meson install' are NOT
+        duplicated into the test install directory.
+
+        Given a project with an installed shared library (install: true)
+        and a test that links to it, 'meson install --install-tests' should
+        install the library under [prefix]/lib via the normal install, and
+        only install the test executable under [prefix]/tests.  The library
+        must NOT appear under [prefix]/tests.
+        """
+        testdir = os.path.join(self.common_test_dir, '287 install tests shared lib')
+        self.init(testdir)
+        self.build()
+
+        destdir = os.path.join(self.builddir, 'install-tests-dest')
+        self._install_tests(destdir=destdir)
+
+        install_root = self._get_installed_test_dir(destdir)
+        prefix_root = os.path.join(destdir, self.prefix.lstrip(os.sep))
+
+        # The shared library should be installed under [prefix]/lib, NOT
+        # anywhere under [prefix]/tests.
+        lib_in_prefix = False
+        for dirpath, dirnames, filenames in os.walk(prefix_root):
+            # Skip the tests subtree
+            rel = os.path.relpath(dirpath, prefix_root)
+            if rel.startswith('tests'):
+                continue
+            for fn in filenames:
+                if fn.startswith('libmylib') and '.so' in fn:
+                    lib_in_prefix = True
+        self.assertTrue(lib_in_prefix,
+                        'libmylib.so should be installed under the prefix (e.g. lib/)')
+
+        # The shared library must NOT appear under the test install dir
+        for dirpath, dirnames, filenames in os.walk(install_root):
+            for fn in filenames:
+                if fn.startswith('libmylib') and '.so' in fn:
+                    self.fail(f'Library {fn} should NOT be duplicated under '
+                              f'tests dir {install_root}, found at {dirpath}')
+
+        # The test executable should still be present in the test tree
+        tests = self._load_installed_tests(install_root)
+        self.assertGreater(len(tests), 0)
+
+    def test_install_tests_no_lib_duplication_run(self):
+        """Test that installed tests referencing non-duplicated libs can run."""
+        testdir = os.path.join(self.common_test_dir, '287 install tests shared lib')
+        self.init(testdir)
+        self.build()
+
+        # First verify tests pass in the build directory
+        self.run_tests()
+
+        destdir = os.path.join(self.builddir, 'install-tests-dest')
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        # The installed tests should still run — they find the library via
+        # LD_LIBRARY_PATH / extra_paths pointing at [prefix]/lib.
+        cmd = self.meson_command + ['test', '-C', install_root]
+        result = self._run(cmd)
+        self.assertIn('OK', result)
+
+    def test_install_tests_relocatable(self):
+        """Test that the entire prefix tree can be moved to a different path
+        and installed tests still run successfully.
+
+        This verifies that the installed-tests pickle uses relocatable
+        placeholders instead of hard-coded absolute paths.
+        """
+        testdir = os.path.join(self.common_test_dir, '287 install tests shared lib')
+        self.init(testdir)
+        self.build()
+
+        # First verify tests pass normally
+        self.run_tests()
+
+        # Install to a destdir
+        destdir = os.path.join(self.builddir, 'install-tests-dest')
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        # Sanity check: tests run from the original location
+        cmd = self.meson_command + ['test', '-C', install_root]
+        result = self._run(cmd)
+        self.assertIn('OK', result)
+
+        # Now move the entire prefix tree to a different location
+        prefix_root = os.path.join(destdir, self.prefix.lstrip(os.sep))
+        relocated = os.path.join(self.builddir, 'relocated-tree')
+        shutil.move(prefix_root, relocated)
+
+        # Compute the new test dir inside the relocated tree
+        relocated_tests = os.path.join(relocated, 'tests')
+
+        # The tests should STILL pass from the new location
+        cmd = self.meson_command + ['test', '-C', relocated_tests]
+        result = self._run(cmd)
+        self.assertIn('OK', result)

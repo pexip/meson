@@ -314,15 +314,79 @@ def run(options: argparse.Namespace) -> int:
 
     # Write a marker file so that `meson test -C <dir>` can detect this is
     # an installed-tests directory and automatically skip the rebuild step.
+    # The marker also records the tests_subdir so mtest.py can compute the
+    # sibling install-prefix directory for @@INSTALLPREFIX@@ resolution.
     marker_path = os.path.join(installed_private_dir, 'installed-tests.marker')
     with open(marker_path, 'w', encoding='utf-8') as f:
-        f.write('This directory contains installed Meson tests.\n')
+        f.write(f'tests_subdir={tests_subdir}\n')
 
     if not options.quiet:
         print(f'\nInstalled {len(installed_tests)} tests to {install_root}')
         print(f'Run tests with: meson test -C {install_root}')
 
     return 0
+
+
+def resolve_installed_test_placeholders(
+    tests: T.List[TestSerialisation],
+    tests_dir: str,
+    marker_path: str,
+) -> None:
+    """Resolve ``@@INSTALLEDTESTSDIR@@`` and ``@@INSTALLPREFIX@@``
+    placeholders in *tests* **in-place**.
+
+    *tests_dir* is the directory passed via ``meson test -C``.
+    *marker_path* is the path to the ``installed-tests.marker`` file
+    (must exist).
+
+    The install prefix is derived from the marker contents::
+
+        tests_subdir=tests          →  prefix = tests_dir/..
+        tests_subdir=my/custom/dir  →  prefix = tests_dir/../../..
+    """
+    tests_dir = os.path.normpath(os.path.realpath(tests_dir))
+
+    # Read tests_subdir from the marker file to compute the prefix
+    tests_subdir = 'tests'
+    with open(marker_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('tests_subdir='):
+                tests_subdir = line.split('=', 1)[1]
+                break
+
+    # prefix_dir = tests_dir stripped of tests_subdir at the end
+    # e.g. /install/usr/tests → /install/usr  (if tests_subdir == "tests")
+    prefix_dir = tests_dir
+    for _ in tests_subdir.replace('\\', '/').split('/'):
+        prefix_dir = os.path.dirname(prefix_dir)
+
+    def _resolve(s: str) -> str:
+        if s.startswith(INSTALLED_TESTS_DIR_PLACEHOLDER):
+            rest = s[len(INSTALLED_TESTS_DIR_PLACEHOLDER):]
+            if rest.startswith(os.sep):
+                rest = rest[len(os.sep):]
+            return os.path.join(tests_dir, rest) if rest else tests_dir
+        if s.startswith(INSTALL_PREFIX_PLACEHOLDER):
+            rest = s[len(INSTALL_PREFIX_PLACEHOLDER):]
+            if rest.startswith(os.sep):
+                rest = rest[len(os.sep):]
+            return os.path.join(prefix_dir, rest) if rest else prefix_dir
+        return s
+
+    for test in tests:
+        test.fname = [_resolve(f) for f in test.fname]
+        test.cmd_args = [_resolve(a) for a in test.cmd_args]
+        test.extra_paths = [_resolve(p) for p in test.extra_paths]
+        if test.workdir:
+            test.workdir = _resolve(test.workdir)
+        # Resolve env var values
+        new_envvars = []
+        for method, name, values, separator in test.env.envvars:
+            new_values = [_resolve(v) if isinstance(v, str) else v
+                          for v in values]
+            new_envvars.append((method, name, new_values, separator))
+        test.env.envvars = new_envvars
 
 
 def _is_under_dir(path: str, directory: str) -> bool:
@@ -388,8 +452,8 @@ def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source
         (method, name, values, separator)
     where values is a list of strings. We rewrite any paths in those values.
     For library path variables, if the libraries are already installed by
-    ``meson install``, point to the installed location instead of copying.
-    Otherwise, copy only test-only libraries.
+    ``meson install``, point to the installed location via a relocatable
+    placeholder instead of copying.  Otherwise, copy only test-only libraries.
     """
     lib_path_vars = {'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH'}
     new_envvars = []
@@ -401,9 +465,9 @@ def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source
                     # For library path variables, check if the libs are
                     # already installed and redirect there
                     if name in lib_path_vars and installed_files is not None:
-                        redirect = _resolve_lib_dir_installed_path(val, installed_files)
+                        redirect = _resolve_lib_dir_installed_relpath(val, installed_files)
                         if redirect is not None:
-                            val = redirect
+                            val = os.path.join(INSTALL_PREFIX_PLACEHOLDER, redirect)
                             new_values.append(val)
                             continue
 
@@ -414,7 +478,7 @@ def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source
                     if name in lib_path_vars and os.path.isdir(val):
                         _copy_shared_libraries(val, dest, copied_files, quiet,
                                                installed_files)
-                    val = dest
+                    val = os.path.join(INSTALLED_TESTS_DIR_PLACEHOLDER, rel)
                 elif _is_under_dir(val, source_dir):
                     norm_val = os.path.normpath(os.path.realpath(val))
                     rel = os.path.relpath(norm_val, source_dir)
@@ -422,7 +486,7 @@ def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source
                     if name in lib_path_vars and os.path.isdir(val):
                         _copy_shared_libraries(val, dest, copied_files, quiet,
                                                installed_files)
-                    val = dest
+                    val = os.path.join(INSTALLED_TESTS_DIR_PLACEHOLDER, rel)
             new_values.append(val)
         new_envvars.append((method, name, new_values, separator))
     env.envvars = new_envvars
