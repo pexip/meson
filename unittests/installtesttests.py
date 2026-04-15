@@ -197,16 +197,16 @@ class InternalInstallTestsTests(BasePlatformTests):
 
 
 class InstallTestsCommandTests(BasePlatformTests):
-    """Integration tests for the 'meson install-tests' command."""
+    """Integration tests for 'meson install --install-tests'."""
 
     def _install_tests(self, *, destdir: T.Optional[str] = None,
                        tests_prefix: T.Optional[str] = None,
                        extra_args: T.Optional[T.List[str]] = None,
                        quiet: bool = False) -> str:
-        """Run 'meson install-tests' and return stdout."""
+        """Run 'meson install --install-tests' and return stdout."""
         if self.backend is not Backend.ninja:
             raise SkipTest(f'{self.backend.name!r} backend can\'t install tests')
-        cmd = self.meson_command + ['install-tests', '-C', self.builddir, '--no-rebuild']
+        cmd = self.meson_command + ['install', '-C', self.builddir, '--no-rebuild', '--install-tests']
         if tests_prefix:
             cmd += ['--tests-prefix', tests_prefix]
         if quiet:
@@ -663,8 +663,8 @@ class InstallTestsCommandTests(BasePlatformTests):
         flag_destdir = os.path.join(self.builddir, 'flag-destdir')
 
         # Set DESTDIR env but also pass --destdir flag
-        cmd = self.meson_command + ['install-tests', '-C', self.builddir, '--no-rebuild',
-                                    '--destdir', flag_destdir]
+        cmd = self.meson_command + ['install', '-C', self.builddir, '--no-rebuild',
+                                    '--install-tests', '--destdir', flag_destdir]
         self._run(cmd, override_envvars={'DESTDIR': env_destdir})
 
         # Flag should win over env
@@ -751,134 +751,6 @@ class InstallTestsCommandTests(BasePlatformTests):
                             val.startswith(self.builddir),
                             f'Env var {name} value {val} should NOT reference the build dir'
                         )
-
-
-class MesonInstallWithTestsTests(BasePlatformTests):
-    """Tests for 'meson install --install-tests' integration."""
-
-    def _meson_install(self, *, destdir: T.Optional[str] = None,
-                       tests_prefix: T.Optional[str] = None,
-                       quiet: bool = False) -> str:
-        """Run 'meson install --install-tests' and return stdout."""
-        if self.backend is not Backend.ninja:
-            raise SkipTest(f'{self.backend.name!r} backend can\'t install')
-        cmd = self.meson_command + ['install', '-C', self.builddir,
-                                    '--no-rebuild', '--install-tests']
-        if tests_prefix:
-            cmd += ['--tests-prefix', tests_prefix]
-        if quiet:
-            cmd += ['-q']
-        env = None
-        if destdir:
-            env = {'DESTDIR': destdir}
-        return self._run(cmd, override_envvars=env)
-
-    def _get_installed_test_dir(self, destdir: str,
-                                tests_prefix: str = 'tests') -> str:
-        """Return the path where tests are installed."""
-        return os.path.join(destdir, self.prefix.lstrip(os.sep), tests_prefix)
-
-    def test_meson_install_with_tests_basic(self):
-        """Test 'meson install --install-tests' installs tests alongside normal install."""
-        testdir = os.path.join(self.common_test_dir, '1 trivial')
-        self.init(testdir)
-        self.build()
-
-        destdir = os.path.join(self.builddir, 'install-dest')
-        self._meson_install(destdir=destdir)
-
-        install_root = self._get_installed_test_dir(destdir)
-
-        # Check the meson-private directory was created for tests
-        private_dir = os.path.join(install_root, 'meson-private')
-        self.assertPathExists(private_dir)
-
-        # Check test data file was created
-        test_data = os.path.join(private_dir, 'meson_test_setup.dat')
-        self.assertPathExists(test_data)
-
-        # Check marker file
-        marker = os.path.join(private_dir, 'installed-tests.marker')
-        self.assertPathExists(marker)
-
-        # Load the installed test data and verify
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
-        self.assertGreater(len(tests), 0)
-
-    def test_meson_install_with_tests_run(self):
-        """Test that tests installed via 'meson install --install-tests' can be run."""
-        testdir = os.path.join(self.common_test_dir, '1 trivial')
-        self.init(testdir)
-        self.build()
-
-        destdir = os.path.join(self.builddir, 'install-dest')
-        self._meson_install(destdir=destdir)
-        install_root = self._get_installed_test_dir(destdir)
-
-        # Run tests from install location — no --no-rebuild needed
-        cmd = self.meson_command + ['test', '-C', install_root]
-        result = self._run(cmd)
-        self.assertIn('OK', result)
-
-    def test_meson_install_with_tests_custom_prefix(self):
-        """Test 'meson install --install-tests --tests-prefix=custom'."""
-        testdir = os.path.join(self.common_test_dir, '1 trivial')
-        self.init(testdir)
-        self.build()
-
-        destdir = os.path.join(self.builddir, 'install-dest')
-        self._meson_install(destdir=destdir, tests_prefix='my-tests')
-
-        install_root = self._get_installed_test_dir(destdir, 'my-tests')
-        self.assertPathExists(os.path.join(install_root, 'meson-private', 'meson_test_setup.dat'))
-
-        # Default 'tests' dir should NOT exist
-        default_root = self._get_installed_test_dir(destdir, 'tests')
-        self.assertPathDoesNotExist(default_root)
-
-    def test_meson_install_with_tests_shared_library(self):
-        """Test that shared library tests work via 'meson install --install-tests'."""
-        testdir = os.path.join(self.common_test_dir, '6 linkshared')
-        self.init(testdir)
-        self.build()
-
-        self.run_tests()
-
-        destdir = os.path.join(self.builddir, 'install-dest')
-        self._meson_install(destdir=destdir)
-        install_root = self._get_installed_test_dir(destdir)
-
-        cmd = self.meson_command + ['test', '-C', install_root]
-        result = self._run(cmd)
-        self.assertIn('OK', result)
-
-    def test_meson_install_with_tests_paths_rewritten(self):
-        """Test that paths are properly rewritten when using meson install --install-tests."""
-        testdir = os.path.join(self.common_test_dir, '1 trivial')
-        self.init(testdir)
-        self.build()
-
-        destdir = tempfile.mkdtemp()
-        self.addCleanup(lambda: shutil.rmtree(destdir, ignore_errors=True))
-        self._meson_install(destdir=destdir)
-        install_root = self._get_installed_test_dir(destdir)
-
-        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
-
-        for test in tests:
-            for fname in test.fname:
-                if os.path.isabs(fname):
-                    self.assertFalse(
-                        fname.startswith(self.builddir),
-                        f'Test path {fname} should NOT reference the build dir'
-                    )
-                    self.assertTrue(
-                        fname.startswith(install_root),
-                        f'Test path {fname} should be under install root {install_root}'
-                    )
 
     def test_meson_install_without_install_tests(self):
         """Test that normal 'meson install' does NOT install tests."""
