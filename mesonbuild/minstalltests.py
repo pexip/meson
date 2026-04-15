@@ -19,6 +19,15 @@ from .options import OptionKey
 if T.TYPE_CHECKING:
     pass
 
+# Placeholder tokens embedded in the installed-tests pickle so that the
+# test directory can be moved to a different location and still work.
+# ``@@INSTALLEDTESTSDIR@@`` is replaced at run-time with the directory
+# passed via ``meson test -C <dir>``.
+# ``@@INSTALLPREFIX@@`` is replaced at run-time with the sibling install
+# prefix (i.e. <dir>/../../<prefix-tail> derived from the tests_subdir).
+INSTALLED_TESTS_DIR_PLACEHOLDER = '@@INSTALLEDTESTSDIR@@'
+INSTALL_PREFIX_PLACEHOLDER = '@@INSTALLPREFIX@@'
+
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('-C', dest='wd', action=RealPathAction,
@@ -37,42 +46,37 @@ def _build_installed_files_map(
     wd: str, destdir: str, prefix: str
 ) -> T.Dict[str, str]:
     """Build a mapping from normalized build-dir file paths to their
-    installed locations (DESTDIR + prefix + outdir + basename).
+    installed locations **relative to the install prefix**.
 
-    This lets us know which files are already installed by the normal
-    ``meson install`` step so we can reference them in-place instead of
-    copying them again into the test install directory.
+    For example, a target installed to ``{prefix}/lib/libfoo.so`` will
+    map to ``lib/libfoo.so``.  The caller can then prepend the
+    ``@@INSTALLPREFIX@@`` placeholder so that the path is resolved at
+    test-run time.
     """
     install_dat = os.path.join(wd, 'meson-private', 'install.dat')
     if not os.path.isfile(install_dat):
         return {}
 
     from .minstall import load_install_data
-    from .scripts import destdir_join
     d = load_install_data(install_dat)
-
-    fullprefix = destdir_join(destdir, d.prefix) if destdir else d.prefix
 
     mapping: T.Dict[str, str] = {}
     for t in d.targets:
         src = os.path.normpath(os.path.realpath(t.fname))
-        if os.path.isabs(t.outdir):
-            outdir = t.outdir
-        else:
-            outdir = os.path.join(fullprefix, t.outdir)
-        installed_path = os.path.join(outdir, os.path.basename(t.fname))
-        mapping[src] = installed_path
+        # outdir is relative to prefix (e.g. "lib" or "bin")
+        rel_installed = os.path.join(t.outdir, os.path.basename(t.fname))
+        mapping[src] = rel_installed
     return mapping
 
 
-def _resolve_lib_dir_installed_path(
+def _resolve_lib_dir_installed_relpath(
     lib_dir: str, installed_files: T.Dict[str, str]
 ) -> T.Optional[str]:
     """If every shared library in *lib_dir* is already covered by the
     normal install (present in *installed_files*) AND they all go to the
-    same install directory, return that directory.  Otherwise return
-    ``None``, meaning some libraries need to be copied into the test
-    install tree.
+    same install directory (relative to prefix), return that directory.
+    Otherwise return ``None``, meaning some libraries need to be copied
+    into the test install tree.
     """
     if not os.path.isdir(lib_dir):
         return None
@@ -85,11 +89,11 @@ def _resolve_lib_dir_installed_path(
         if (os.path.isfile(src_path) or os.path.islink(src_path)) and _is_shared_library(entry):
             has_libs = True
             norm = os.path.normpath(os.path.realpath(src_path))
-            installed = installed_files.get(norm)
-            if installed is None:
+            rel_installed = installed_files.get(norm)
+            if rel_installed is None:
                 # This lib is NOT installed by `meson install` → must copy
                 return None
-            install_dirs.add(os.path.dirname(installed))
+            install_dirs.add(os.path.dirname(rel_installed))
 
     if not has_libs:
         return None
@@ -160,8 +164,19 @@ def run(options: argparse.Namespace) -> int:
 
     # Build a mapping of files already installed by `meson install` so that
     # we can reference them in-place and avoid duplicating shared libraries
-    # into the test install directory.
+    # into the test install directory.  Values are paths *relative to the
+    # install prefix* (e.g. ``lib/libfoo.so``).
     installed_files = _build_installed_files_map(options.wd, destdir, prefix)
+
+    # Helper: produce a relocatable placeholder path for a file that was
+    # copied into the test install tree.
+    def _tests_placeholder(rel: str) -> str:
+        return os.path.join(INSTALLED_TESTS_DIR_PLACEHOLDER, rel)
+
+    # Helper: produce a relocatable placeholder path for a file that is
+    # already installed by `meson install` under the main prefix.
+    def _prefix_placeholder(rel: str) -> str:
+        return os.path.join(INSTALL_PREFIX_PLACEHOLDER, rel)
 
     if not options.quiet:
         print(f'Installing tests to {install_root}')
@@ -189,22 +204,22 @@ def run(options: argparse.Namespace) -> int:
             norm_fname = os.path.normpath(os.path.realpath(fname)) if os.path.isabs(fname) else fname
             if _is_under_dir(fname, build_dir):
                 # Check if this file is already installed by meson install
-                already_installed = installed_files.get(norm_fname)
-                if already_installed:
-                    # Use the already-installed path (don't copy again)
-                    new_fname.append(already_installed)
+                rel_installed = installed_files.get(norm_fname)
+                if rel_installed:
+                    # Reference the main install prefix (relocatable)
+                    new_fname.append(_prefix_placeholder(rel_installed))
                 else:
                     # This is a test-only executable - copy it to install location
                     rel_path = os.path.relpath(norm_fname, build_dir)
                     dest_path = os.path.join(install_root, rel_path)
                     _copy_file(fname, dest_path, copied_files, options.quiet)
-                    new_fname.append(dest_path)
+                    new_fname.append(_tests_placeholder(rel_path))
             elif _is_under_dir(fname, source_dir):
                 # Source file (e.g., a test script from source tree)
                 rel_path = os.path.relpath(norm_fname, source_dir)
                 dest_path = os.path.join(install_root, rel_path)
                 _copy_file(fname, dest_path, copied_files, options.quiet)
-                new_fname.append(dest_path)
+                new_fname.append(_tests_placeholder(rel_path))
             else:
                 # External program (e.g., /usr/bin/python3) - keep as-is
                 new_fname.append(fname)
@@ -215,19 +230,19 @@ def run(options: argparse.Namespace) -> int:
         for arg in test.cmd_args:
             norm_arg = os.path.normpath(os.path.realpath(arg)) if os.path.isabs(arg) else arg
             if os.path.isabs(arg) and _is_under_dir(arg, build_dir):
-                already_installed = installed_files.get(norm_arg)
-                if already_installed:
-                    new_cmd_args.append(already_installed)
+                rel_installed = installed_files.get(norm_arg)
+                if rel_installed:
+                    new_cmd_args.append(_prefix_placeholder(rel_installed))
                 else:
                     rel_path = os.path.relpath(norm_arg, build_dir)
                     dest_path = os.path.join(install_root, rel_path)
                     _copy_file(arg, dest_path, copied_files, options.quiet)
-                    new_cmd_args.append(dest_path)
+                    new_cmd_args.append(_tests_placeholder(rel_path))
             elif os.path.isabs(arg) and _is_under_dir(arg, source_dir):
                 rel_path = os.path.relpath(norm_arg, source_dir)
                 dest_path = os.path.join(install_root, rel_path)
                 _copy_file(arg, dest_path, copied_files, options.quiet)
-                new_cmd_args.append(dest_path)
+                new_cmd_args.append(_tests_placeholder(rel_path))
             elif not os.path.isabs(arg):
                 # Relative path - may reference a built file (e.g. custom target output)
                 # Check if it exists relative to build dir and copy it
@@ -247,10 +262,10 @@ def run(options: argparse.Namespace) -> int:
             norm_workdir = os.path.normpath(os.path.realpath(test.workdir))
             if _is_under_dir(test.workdir, build_dir):
                 rel_path = os.path.relpath(norm_workdir, build_dir)
-                new_test.workdir = os.path.join(install_root, rel_path)
+                new_test.workdir = _tests_placeholder(rel_path)
             elif _is_under_dir(test.workdir, source_dir):
                 rel_path = os.path.relpath(norm_workdir, source_dir)
-                new_test.workdir = os.path.join(install_root, rel_path)
+                new_test.workdir = _tests_placeholder(rel_path)
 
         # Rewrite extra_paths (shared library paths).
         # If every library in a directory is already installed by
@@ -259,9 +274,9 @@ def run(options: argparse.Namespace) -> int:
         new_extra_paths: T.List[str] = []
         for p in test.extra_paths:
             if _is_under_dir(p, build_dir):
-                redirect = _resolve_lib_dir_installed_path(p, installed_files)
+                redirect = _resolve_lib_dir_installed_relpath(p, installed_files)
                 if redirect is not None:
-                    new_extra_paths.append(redirect)
+                    new_extra_paths.append(_prefix_placeholder(redirect))
                 else:
                     norm_p = os.path.normpath(os.path.realpath(p))
                     rel_path = os.path.relpath(norm_p, build_dir)
@@ -269,7 +284,7 @@ def run(options: argparse.Namespace) -> int:
                     if os.path.isdir(p):
                         _copy_directory_contents(p, dest_path, copied_files,
                                                  options.quiet, installed_files)
-                    new_extra_paths.append(dest_path)
+                    new_extra_paths.append(_tests_placeholder(rel_path))
             else:
                 new_extra_paths.append(p)
         new_test.extra_paths = new_extra_paths
