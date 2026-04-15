@@ -448,6 +448,8 @@ def _copy_sibling_python_files(src_file: str, dst_file: str, copied: T.Set[str],
     for entry in os.listdir(src_dir):
         if entry.endswith('.py'):
             sib_src = os.path.join(src_dir, entry)
+            if sib_src == src_file:
+                continue  # Already copied by the caller
             sib_dst = os.path.join(dst_dir, entry)
             if os.path.isfile(sib_src):
                 _copy_file(sib_src, sib_dst, copied, quiet)
