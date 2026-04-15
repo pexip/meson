@@ -44,7 +44,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _build_installed_files_map(
-    wd: str, destdir: str, prefix: str
+    wd: str,
 ) -> T.Dict[str, str]:
     """Build a mapping from normalized build-dir file paths to their
     installed locations **relative to the install prefix**.
@@ -149,6 +149,9 @@ def run(options: argparse.Namespace) -> int:
     # Determine the install prefix
     prefix = T.cast('str', b.environment.coredata.optstore.get_value_for(OptionKey('prefix')))
     tests_subdir = options.tests_prefix or 'tests'
+    if os.path.isabs(tests_subdir) or '..' in os.path.normpath(tests_subdir).split(os.sep):
+        print(f'Invalid tests install subdir {tests_subdir!r}: must be a relative path under the install prefix and must not contain "..".')
+        return 1
 
     # Determine destdir
     destdir = options.destdir
@@ -170,7 +173,7 @@ def run(options: argparse.Namespace) -> int:
     # we can reference them in-place and avoid duplicating shared libraries
     # into the test install directory.  Values are paths *relative to the
     # install prefix* (e.g. ``lib/libfoo.so``).
-    installed_files = _build_installed_files_map(options.wd, destdir, prefix)
+    installed_files = _build_installed_files_map(options.wd)
 
     # Helper: produce a relocatable placeholder path for a file that was
     # copied into the test install tree.
@@ -509,10 +512,7 @@ def _copy_shared_libraries(src_dir: str, dst_dir: str, copied: T.Set[str], quiet
             norm = os.path.normpath(os.path.realpath(src_path))
             if norm in installed_files:
                 continue
-        if os.path.isfile(src_path) and _is_shared_library(entry):
-            dst_path = os.path.join(dst_dir, entry)
-            _copy_file(src_path, dst_path, copied, quiet)
-        elif os.path.islink(src_path) and _is_shared_library(entry):
+        if os.path.islink(src_path) and _is_shared_library(entry):
             # Preserve symlinks for versioned shared libraries (e.g., libfoo.so -> libfoo.so.1)
             dst_path = os.path.join(dst_dir, entry)
             if dst_path not in copied:
@@ -529,6 +529,9 @@ def _copy_shared_libraries(src_dir: str, dst_dir: str, copied: T.Set[str], quiet
                 copied.add(dst_path)
                 if not quiet:
                     print(f'Installing symlink {entry} to {dst_dir}')
+        elif os.path.isfile(src_path) and _is_shared_library(entry):
+            dst_path = os.path.join(dst_dir, entry)
+            _copy_file(src_path, dst_path, copied, quiet)
 
 
 def _is_shared_library(filename: str) -> bool:

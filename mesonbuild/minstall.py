@@ -895,7 +895,7 @@ def run(opts: 'ArgumentType') -> int:
         else:
             installer.do_install(datafilename)
 
-    if opts.install_tests:
+    if opts.install_tests and not opts.dry_run:
         from . import minstalltests
         import argparse as _argparse
         # Build an options namespace compatible with minstalltests.run().

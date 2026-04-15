@@ -19,6 +19,7 @@ from mesonbuild.minstalltests import (
     INSTALLED_TESTS_DIR_PLACEHOLDER,
     INSTALL_PREFIX_PLACEHOLDER,
 )
+from mesonbuild.mesonlib import is_windows
 from mesonbuild.utils.core import EnvironmentVariables
 
 from run_tests import Backend
@@ -82,8 +83,9 @@ class InternalInstallTestsTests(BasePlatformTests):
             dst = os.path.join(tmpdir, 'subdir', 'dest.txt')
             with open(src, 'w') as f:
                 f.write('hello')
-            # Make it executable
-            os.chmod(src, os.stat(src).st_mode | stat.S_IXUSR)
+            if not is_windows():
+                # Make it executable
+                os.chmod(src, os.stat(src).st_mode | stat.S_IXUSR)
 
             copied: T.Set[str] = set()
             _copy_file(src, dst, copied, quiet=True)
@@ -92,8 +94,9 @@ class InternalInstallTestsTests(BasePlatformTests):
             self.assertIn(dst, copied)
             with open(dst) as f:
                 self.assertEqual(f.read(), 'hello')
-            # Check executable permission is preserved
-            self.assertTrue(os.stat(dst).st_mode & stat.S_IXUSR)
+            if not is_windows():
+                # Check executable permission is preserved
+                self.assertTrue(os.stat(dst).st_mode & stat.S_IXUSR)
 
     def test_copy_file_skips_already_copied(self):
         """Test _copy_file does not re-copy files already in the copied set."""
@@ -514,11 +517,17 @@ class InstallTestsCommandTests(BasePlatformTests):
         for test in tests:
             for fname in test.fname:
                 if os.path.isabs(fname) and os.path.isfile(fname):
-                    mode = os.stat(fname).st_mode
-                    self.assertTrue(
-                        mode & stat.S_IXUSR,
-                        f'Installed test executable {fname} should be executable'
-                    )
+                    if not is_windows():
+                        mode = os.stat(fname).st_mode
+                        self.assertTrue(
+                            mode & stat.S_IXUSR,
+                            f'Installed test executable {fname} should be executable'
+                        )
+                    else:
+                        self.assertTrue(
+                            os.access(fname, os.X_OK),
+                            f'Installed test executable {fname} should be executable'
+                        )
 
     def test_install_tests_multiple_runs(self):
         """Test that running install-tests twice works (overwrites cleanly)."""
