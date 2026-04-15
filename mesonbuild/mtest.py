@@ -2070,6 +2070,7 @@ class TestHarness:
         if not self.logfile_base:
             return
 
+        os.makedirs(os.path.dirname(self.logfile_base), exist_ok=True)
         self.loggers.append(JunitBuilder(self.logfile_base + '.junit.xml'))
         self.loggers.append(JsonLogfileBuilder(self.logfile_base + '.json'))
         self.loggers.append(TextLogfileBuilder(self.logfile_base + '.txt', errors='surrogateescape'))
