@@ -16,6 +16,8 @@ from mesonbuild.minstalltests import (
     _copy_file,
     _copy_directory_contents,
     _rewrite_env_paths,
+    INSTALLED_TESTS_DIR_PLACEHOLDER,
+    INSTALL_PREFIX_PLACEHOLDER,
 )
 from mesonbuild.utils.core import EnvironmentVariables
 
@@ -144,7 +146,7 @@ class InternalInstallTestsTests(BasePlatformTests):
             self.assertFalse(os.path.exists(dst_dir))
 
     def test_rewrite_env_paths(self):
-        """Test _rewrite_env_paths rewrites build dir paths."""
+        """Test _rewrite_env_paths rewrites build dir paths to placeholders."""
         build_dir = '/build'
         source_dir = '/source'
         install_root = '/install'
@@ -155,14 +157,14 @@ class InternalInstallTestsTests(BasePlatformTests):
         copied: T.Set[str] = set()
         _rewrite_env_paths(env, build_dir, source_dir, install_root, copied, quiet=True)
 
-        # Check that the path was rewritten
+        # Check that the path was rewritten with the placeholder
         self.assertEqual(len(env.envvars), 1)
         method, name, values, sep = env.envvars[0]
         self.assertEqual(name, 'MY_VAR')
-        self.assertEqual(values, [os.path.join(install_root, 'subdir', 'file')])
+        self.assertEqual(values, [os.path.join(INSTALLED_TESTS_DIR_PLACEHOLDER, 'subdir', 'file')])
 
     def test_rewrite_env_paths_source_dir(self):
-        """Test _rewrite_env_paths rewrites source dir paths."""
+        """Test _rewrite_env_paths rewrites source dir paths to placeholders."""
         build_dir = '/build'
         source_dir = '/source'
         install_root = '/install'
@@ -176,7 +178,7 @@ class InternalInstallTestsTests(BasePlatformTests):
         self.assertEqual(len(env.envvars), 1)
         method, name, values, sep = env.envvars[0]
         self.assertEqual(name, 'MY_VAR')
-        self.assertEqual(values, [os.path.join(install_root, 'data', 'file')])
+        self.assertEqual(values, [os.path.join(INSTALLED_TESTS_DIR_PLACEHOLDER, 'data', 'file')])
 
     def test_rewrite_env_paths_external_path_unchanged(self):
         """Test _rewrite_env_paths does not modify external paths."""
@@ -223,6 +225,16 @@ class InstallTestsCommandTests(BasePlatformTests):
         """Return the path where tests are installed."""
         return os.path.join(destdir, self.prefix.lstrip(os.sep), tests_prefix)
 
+    def _load_installed_tests(self, install_root: str) -> T.List:
+        """Load the installed test data and resolve placeholders."""
+        from mesonbuild.minstalltests import resolve_installed_test_placeholders
+        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
+        marker = os.path.join(install_root, 'meson-private', 'installed-tests.marker')
+        with open(test_data, 'rb') as f:
+            tests = pickle.load(f)
+        resolve_installed_test_placeholders(tests, install_root, marker)
+        return tests
+
     def test_install_tests_basic(self):
         """Test basic install-tests installs test executable and data files."""
         testdir = os.path.join(self.common_test_dir, '1 trivial')
@@ -255,8 +267,7 @@ class InstallTestsCommandTests(BasePlatformTests):
         self.assertPathExists(logs_dir)
 
         # Load the installed test data and verify
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
+        tests = self._load_installed_tests(install_root)
         self.assertGreater(len(tests), 0)
 
         # The test executable should be in the install root
@@ -364,8 +375,7 @@ class InstallTestsCommandTests(BasePlatformTests):
         test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
         self.assertPathExists(test_data)
 
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
+        tests = self._load_installed_tests(install_root)
 
         # Should have multiple tests
         self.assertGreater(len(tests), 1)
@@ -410,15 +420,17 @@ class InstallTestsCommandTests(BasePlatformTests):
         test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
         self.assertPathExists(test_data)
 
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
+        tests = self._load_installed_tests(install_root)
 
         self.assertGreater(len(tests), 0)
 
         # All test executables should exist in installed location
+        # After resolution, some fnames may point to prefix paths (already-installed
+        # binaries) that don't exist under install_root with DESTDIR; only check
+        # existence for paths under install_root.
         for test in tests:
             for fname in test.fname:
-                if os.path.isabs(fname):
+                if os.path.isabs(fname) and fname.startswith(install_root):
                     self.assertPathExists(fname)
 
     def test_install_tests_shared_library_run(self):
@@ -452,16 +464,18 @@ class InstallTestsCommandTests(BasePlatformTests):
         self._install_tests(destdir=destdir)
         install_root = self._get_installed_test_dir(destdir)
 
-        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
+        tests = self._load_installed_tests(install_root)
 
         # Load original test data to compare
         orig_test_data = os.path.join(self.builddir, 'meson-private', 'meson_test_setup.dat')
         with open(orig_test_data, 'rb') as f:
             orig_tests = pickle.load(f)
 
-        # All absolute paths in fname should be under install_root, not the build dir
+        # Compute the prefix directory (install_root stripped of tests_subdir)
+        prefix_dir = os.path.dirname(install_root)
+
+        # All absolute paths in fname should be under install_root or
+        # the prefix (for already-installed files), and NOT the build dir
         for test in tests:
             for fname in test.fname:
                 if os.path.isabs(fname):
@@ -470,8 +484,8 @@ class InstallTestsCommandTests(BasePlatformTests):
                         f'Test path {fname} should NOT reference the build dir'
                     )
                     self.assertTrue(
-                        fname.startswith(install_root),
-                        f'Test path {fname} should be under install root {install_root}'
+                        fname.startswith(install_root) or fname.startswith(prefix_dir),
+                        f'Test path {fname} should be under install root {install_root} or prefix {prefix_dir}'
                     )
 
         # Verify the original tests reference the build dir
@@ -493,9 +507,7 @@ class InstallTestsCommandTests(BasePlatformTests):
         self._install_tests(destdir=destdir)
         install_root = self._get_installed_test_dir(destdir)
 
-        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
+        tests = self._load_installed_tests(install_root)
 
         for test in tests:
             for fname in test.fname:
@@ -530,9 +542,7 @@ class InstallTestsCommandTests(BasePlatformTests):
         self._install_tests(destdir=destdir)
         install_root = self._get_installed_test_dir(destdir)
 
-        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
+        tests = self._load_installed_tests(install_root)
 
         # Find the 'environment variables' test
         env_test = None
@@ -561,9 +571,7 @@ class InstallTestsCommandTests(BasePlatformTests):
         install_root = self._get_installed_test_dir(destdir)
 
         # Load installed test data
-        installed_test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
-        with open(installed_test_data, 'rb') as f:
-            installed_tests = pickle.load(f)
+        installed_tests = self._load_installed_tests(install_root)
 
         # Same number of tests
         self.assertEqual(len(orig_tests), len(installed_tests))
@@ -583,9 +591,7 @@ class InstallTestsCommandTests(BasePlatformTests):
         self._install_tests(destdir=destdir)
         install_root = self._get_installed_test_dir(destdir)
 
-        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
+        tests = self._load_installed_tests(install_root)
 
         for test in tests:
             if test.workdir:
@@ -716,9 +722,7 @@ class InstallTestsCommandTests(BasePlatformTests):
         self._install_tests(destdir=destdir)
         install_root = self._get_installed_test_dir(destdir)
 
-        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
+        tests = self._load_installed_tests(install_root)
 
         for test in tests:
             for p in test.extra_paths:
@@ -739,9 +743,7 @@ class InstallTestsCommandTests(BasePlatformTests):
         self._install_tests(destdir=destdir)
         install_root = self._get_installed_test_dir(destdir)
 
-        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
-        with open(test_data, 'rb') as f:
-            tests = pickle.load(f)
+        tests = self._load_installed_tests(install_root)
 
         for test in tests:
             for method, name, values, sep in test.env.envvars:
