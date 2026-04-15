@@ -7,6 +7,7 @@ import argparse
 import copy
 import os
 import pickle
+import re
 import shutil
 import sys
 import typing as T
@@ -56,6 +57,8 @@ def run(options: argparse.Namespace) -> int:
                     return 1
             else:
                 print("Can't find ninja, can't rebuild before installing tests.")
+                # Exit code 127 matches shell 'command not found', consistent
+                # with meson test (mtest.py) when ninja is missing.
                 return 127
 
     # Load the test data from the build directory
@@ -216,8 +219,8 @@ def _is_under_dir(path: str, directory: str) -> bool:
     if not os.path.isabs(path):
         return False
     try:
-        path = os.path.realpath(path)
-        directory = os.path.realpath(directory)
+        path = os.path.normpath(os.path.realpath(path))
+        directory = os.path.normpath(os.path.realpath(directory))
         return path.startswith(directory + os.sep) or path == directory
     except (ValueError, OSError):
         return False
@@ -313,6 +316,8 @@ def _copy_shared_libraries(src_dir: str, dst_dir: str, copied: T.Set[str], quiet
 def _is_shared_library(filename: str) -> bool:
     """Check if a filename looks like a shared library."""
     # Match .so, .so.X, .so.X.Y, .so.X.Y.Z, .dylib, .dll
-    if '.so' in filename or filename.endswith('.dylib') or filename.endswith('.dll'):
+    if re.search(r'\.so(\.[0-9]+)*$', filename):
+        return True
+    if filename.endswith('.dylib') or filename.endswith('.dll'):
         return True
     return False
