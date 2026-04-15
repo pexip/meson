@@ -62,8 +62,9 @@ class InternalInstallTestsTests(BasePlatformTests):
         self.assertTrue(_is_shared_library('libfoo.dylib'))
 
     def test_is_shared_library_dll(self):
-        """Test _is_shared_library with .dll files."""
+        """Test _is_shared_library with .dll and .dll.a files."""
         self.assertTrue(_is_shared_library('libfoo.dll'))
+        self.assertTrue(_is_shared_library('libfoo.dll.a'))
 
     def test_is_shared_library_not_shared(self):
         """Test _is_shared_library with non-shared library files."""
@@ -223,7 +224,8 @@ class InstallTestsCommandTests(BasePlatformTests):
     def _get_installed_test_dir(self, destdir: str,
                                 tests_prefix: str = 'tests') -> str:
         """Return the path where tests are installed."""
-        return os.path.join(destdir, self.prefix.lstrip(os.sep), tests_prefix)
+        from mesonbuild.scripts import destdir_join
+        return os.path.join(destdir_join(destdir, self.prefix), tests_prefix)
 
     def _load_installed_tests(self, install_root: str) -> T.List:
         """Load the installed test data and resolve placeholders."""
@@ -787,10 +789,15 @@ class InstallTestsCommandTests(BasePlatformTests):
         self._install_tests(destdir=destdir)
 
         install_root = self._get_installed_test_dir(destdir)
-        prefix_root = os.path.join(destdir, self.prefix.lstrip(os.sep))
+        from mesonbuild.scripts import destdir_join
+        prefix_root = destdir_join(destdir, self.prefix)
 
-        # The shared library should be installed under [prefix]/lib, NOT
-        # anywhere under [prefix]/tests.
+        def _is_mylib(fn: str) -> bool:
+            """Check if a file is a shared library for 'mylib'."""
+            return fn.startswith(('libmylib', 'mylib')) and _is_shared_library(fn)
+
+        # The shared library should be installed under [prefix]/lib (or bin on
+        # Windows), NOT anywhere under [prefix]/tests.
         lib_in_prefix = False
         for dirpath, dirnames, filenames in os.walk(prefix_root):
             # Skip the tests subtree
@@ -798,15 +805,15 @@ class InstallTestsCommandTests(BasePlatformTests):
             if rel == 'tests' or rel.startswith('tests' + os.sep):
                 continue
             for fn in filenames:
-                if fn.startswith('libmylib') and '.so' in fn:
+                if _is_mylib(fn):
                     lib_in_prefix = True
         self.assertTrue(lib_in_prefix,
-                        'libmylib.so should be installed under the prefix (e.g. lib/)')
+                        'mylib should be installed under the prefix (e.g. lib/ or bin/)')
 
         # The shared library must NOT appear under the test install dir
         for dirpath, dirnames, filenames in os.walk(install_root):
             for fn in filenames:
-                if fn.startswith('libmylib') and '.so' in fn:
+                if _is_mylib(fn):
                     self.fail(f'Library {fn} should NOT be duplicated under '
                               f'tests dir {install_root}, found at {dirpath}')
 
@@ -858,7 +865,8 @@ class InstallTestsCommandTests(BasePlatformTests):
         self.assertIn('OK', result)
 
         # Now move the entire prefix tree to a different location
-        prefix_root = os.path.join(destdir, self.prefix.lstrip(os.sep))
+        from mesonbuild.scripts import destdir_join
+        prefix_root = destdir_join(destdir, self.prefix)
         relocated = os.path.join(self.builddir, 'relocated-tree')
         shutil.move(prefix_root, relocated)
 

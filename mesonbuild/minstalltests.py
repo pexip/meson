@@ -15,6 +15,7 @@ from . import build
 from .backend.backends import TestSerialisation
 from .mesonlib import RealPathAction, setup_vsenv
 from .options import OptionKey
+from .scripts import destdir_join
 
 if T.TYPE_CHECKING:
     pass
@@ -157,7 +158,10 @@ def run(options: argparse.Namespace) -> int:
         destdir = os.path.join(options.wd, destdir)
 
     # The install root for tests: DESTDIR + prefix + tests_subdir
-    install_root = os.path.join(destdir, prefix.lstrip(os.sep), tests_subdir) if destdir else os.path.join(prefix, tests_subdir)
+    if destdir:
+        install_root = os.path.join(destdir_join(destdir, prefix), tests_subdir)
+    else:
+        install_root = os.path.join(prefix, tests_subdir)
 
     build_dir = os.path.normpath(os.path.realpath(b.environment.get_build_dir()))
     source_dir = os.path.normpath(os.path.realpath(b.environment.get_source_dir()))
@@ -357,20 +361,21 @@ def resolve_installed_test_placeholders(
 
     # prefix_dir = tests_dir stripped of tests_subdir at the end
     # e.g. /install/usr/tests → /install/usr  (if tests_subdir == "tests")
+    from pathlib import PurePath
     prefix_dir = tests_dir
-    for _ in tests_subdir.replace('\\', '/').split('/'):
+    for _ in PurePath(tests_subdir).parts:
         prefix_dir = os.path.dirname(prefix_dir)
 
     def _resolve(s: str) -> str:
         if s.startswith(INSTALLED_TESTS_DIR_PLACEHOLDER):
             rest = s[len(INSTALLED_TESTS_DIR_PLACEHOLDER):]
-            if rest.startswith(os.sep):
-                rest = rest[len(os.sep):]
+            if rest and rest[0] in ('/', '\\'):
+                rest = rest[1:]
             return os.path.join(tests_dir, rest) if rest else tests_dir
         if s.startswith(INSTALL_PREFIX_PLACEHOLDER):
             rest = s[len(INSTALL_PREFIX_PLACEHOLDER):]
-            if rest.startswith(os.sep):
-                rest = rest[len(os.sep):]
+            if rest and rest[0] in ('/', '\\'):
+                rest = rest[1:]
             return os.path.join(prefix_dir, rest) if rest else prefix_dir
         return s
 
@@ -413,10 +418,7 @@ def _copy_file(src: str, dst: str, copied: T.Set[str], quiet: bool) -> None:
     dst_dir = os.path.dirname(dst)
     if dst_dir:
         os.makedirs(dst_dir, exist_ok=True)
-    shutil.copy2(src, dst)
-    # Preserve executable permissions
-    src_mode = os.stat(src).st_mode
-    os.chmod(dst, src_mode)
+    shutil.copy2(src, dst)  # Preserves permissions and metadata
     copied.add(dst)
     if not quiet:
         print(f'Installing {os.path.basename(src)} to {os.path.dirname(dst)}')
@@ -455,7 +457,8 @@ def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source
     ``meson install``, point to the installed location via a relocatable
     placeholder instead of copying.  Otherwise, copy only test-only libraries.
     """
-    lib_path_vars = {'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH'}
+    # On Windows, DLLs are found via PATH (not LD_LIBRARY_PATH).
+    lib_path_vars = {'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'PATH'}
     new_envvars = []
     for method, name, values, separator in env.envvars:
         new_values = []
@@ -516,8 +519,13 @@ def _copy_shared_libraries(src_dir: str, dst_dir: str, copied: T.Set[str], quiet
                 os.makedirs(os.path.dirname(dst_path), exist_ok=True)
                 if os.path.exists(dst_path) or os.path.islink(dst_path):
                     os.unlink(dst_path)
-                link_target = os.readlink(src_path)
-                os.symlink(link_target, dst_path)
+                try:
+                    link_target = os.readlink(src_path)
+                    os.symlink(link_target, dst_path)
+                except (NotImplementedError, OSError):
+                    # Symlinks may not be available on Windows without
+                    # developer mode — fall back to a regular file copy.
+                    shutil.copy2(src_path, dst_path)
                 copied.add(dst_path)
                 if not quiet:
                     print(f'Installing symlink {entry} to {dst_dir}')
@@ -525,9 +533,9 @@ def _copy_shared_libraries(src_dir: str, dst_dir: str, copied: T.Set[str], quiet
 
 def _is_shared_library(filename: str) -> bool:
     """Check if a filename looks like a shared library."""
-    # Match .so, .so.X, .so.X.Y, .so.X.Y.Z, .dylib, .dll
+    # Match .so, .so.X, .so.X.Y, .so.X.Y.Z, .dylib, .dll, .dll.a (import lib)
     if re.search(r'\.so(\.[0-9]+)*$', filename):
         return True
-    if filename.endswith('.dylib') or filename.endswith('.dll'):
+    if filename.endswith('.dylib') or filename.endswith('.dll') or filename.endswith('.dll.a'):
         return True
     return False
