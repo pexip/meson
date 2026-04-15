@@ -14,6 +14,7 @@ from mesonbuild.minstalltests import (
     _is_under_dir,
     _is_shared_library,
     _copy_file,
+    _copy_sibling_python_files,
     _copy_directory_contents,
     _rewrite_env_paths,
     INSTALLED_TESTS_DIR_PLACEHOLDER,
@@ -148,6 +149,57 @@ class InternalInstallTestsTests(BasePlatformTests):
             copied: T.Set[str] = set()
             _copy_directory_contents('/nonexistent', dst_dir, copied, quiet=True)
             self.assertFalse(os.path.exists(dst_dir))
+
+    def test_copy_sibling_python_files(self):
+        """Test _copy_sibling_python_files copies sibling .py files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, 'src')
+            dst_dir = os.path.join(tmpdir, 'dst')
+            os.makedirs(src_dir)
+            os.makedirs(dst_dir)
+
+            # Create a Python test file and some siblings
+            with open(os.path.join(src_dir, 'test_main.py'), 'w') as f:
+                f.write('import helper\nhelper.run()\n')
+            with open(os.path.join(src_dir, 'helper.py'), 'w') as f:
+                f.write('def run(): pass\n')
+            with open(os.path.join(src_dir, '__init__.py'), 'w') as f:
+                f.write('')
+            # Non-.py file should NOT be copied
+            with open(os.path.join(src_dir, 'data.txt'), 'w') as f:
+                f.write('not python')
+
+            src_file = os.path.join(src_dir, 'test_main.py')
+            dst_file = os.path.join(dst_dir, 'test_main.py')
+            copied: T.Set[str] = set()
+            _copy_sibling_python_files(src_file, dst_file, copied, quiet=True)
+
+            # Sibling .py files should be copied
+            self.assertTrue(os.path.isfile(os.path.join(dst_dir, 'helper.py')))
+            self.assertTrue(os.path.isfile(os.path.join(dst_dir, '__init__.py')))
+            # Non-.py files should not be copied
+            self.assertFalse(os.path.isfile(os.path.join(dst_dir, 'data.txt')))
+
+    def test_copy_sibling_python_files_non_python(self):
+        """Test _copy_sibling_python_files is a no-op for non-.py files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, 'src')
+            dst_dir = os.path.join(tmpdir, 'dst')
+            os.makedirs(src_dir)
+            os.makedirs(dst_dir)
+
+            with open(os.path.join(src_dir, 'test_main.sh'), 'w') as f:
+                f.write('#!/bin/sh\n')
+            with open(os.path.join(src_dir, 'helper.py'), 'w') as f:
+                f.write('def run(): pass\n')
+
+            src_file = os.path.join(src_dir, 'test_main.sh')
+            dst_file = os.path.join(dst_dir, 'test_main.sh')
+            copied: T.Set[str] = set()
+            _copy_sibling_python_files(src_file, dst_file, copied, quiet=True)
+
+            # Should not copy anything since source is not a .py file
+            self.assertFalse(os.path.isfile(os.path.join(dst_dir, 'helper.py')))
 
     def test_rewrite_env_paths(self):
         """Test _rewrite_env_paths rewrites build dir paths to placeholders."""

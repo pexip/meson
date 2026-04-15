@@ -226,6 +226,8 @@ def run(options: argparse.Namespace) -> int:
                 rel_path = os.path.relpath(norm_fname, source_dir)
                 dest_path = os.path.join(install_root, rel_path)
                 _copy_file(fname, dest_path, copied_files, options.quiet)
+                # Copy sibling .py files so implicit imports work
+                _copy_sibling_python_files(norm_fname, dest_path, copied_files, options.quiet)
                 new_fname.append(_tests_placeholder(rel_path))
             else:
                 # External program (e.g., /usr/bin/python3) - keep as-is
@@ -249,6 +251,8 @@ def run(options: argparse.Namespace) -> int:
                 rel_path = os.path.relpath(norm_arg, source_dir)
                 dest_path = os.path.join(install_root, rel_path)
                 _copy_file(arg, dest_path, copied_files, options.quiet)
+                # Copy sibling .py files so implicit imports work
+                _copy_sibling_python_files(norm_arg, dest_path, copied_files, options.quiet)
                 new_cmd_args.append(_tests_placeholder(rel_path))
             elif not os.path.isabs(arg):
                 # Relative path - may reference a built file (e.g. custom target output)
@@ -425,6 +429,28 @@ def _copy_file(src: str, dst: str, copied: T.Set[str], quiet: bool) -> None:
     copied.add(dst)
     if not quiet:
         print(f'Installing {os.path.basename(src)} to {os.path.dirname(dst)}')
+
+
+def _copy_sibling_python_files(src_file: str, dst_file: str, copied: T.Set[str], quiet: bool) -> None:
+    """When copying a Python source file, also copy sibling ``.py`` files.
+
+    Python scripts frequently ``import`` modules from the same directory.
+    These sibling files are implicit dependencies that Meson does not track,
+    so we copy every ``.py`` file that lives next to *src_file* into the
+    same destination directory as *dst_file*.
+    """
+    if not src_file.endswith('.py'):
+        return
+    src_dir = os.path.dirname(src_file)
+    dst_dir = os.path.dirname(dst_file)
+    if not src_dir or not os.path.isdir(src_dir):
+        return
+    for entry in os.listdir(src_dir):
+        if entry.endswith('.py'):
+            sib_src = os.path.join(src_dir, entry)
+            sib_dst = os.path.join(dst_dir, entry)
+            if os.path.isfile(sib_src):
+                _copy_file(sib_src, sib_dst, copied, quiet)
 
 
 def _copy_directory_contents(src_dir: str, dst_dir: str, copied: T.Set[str], quiet: bool,
