@@ -9,7 +9,6 @@ import os
 import pickle
 import re
 import shutil
-import sys
 import typing as T
 
 from . import build
@@ -88,8 +87,8 @@ def run(options: argparse.Namespace) -> int:
     # The install root for tests: DESTDIR + prefix + tests_subdir
     install_root = os.path.join(destdir, prefix.lstrip(os.sep), tests_subdir) if destdir else os.path.join(prefix, tests_subdir)
 
-    build_dir = b.environment.get_build_dir()
-    source_dir = b.environment.get_source_dir()
+    build_dir = os.path.normpath(os.path.realpath(b.environment.get_build_dir()))
+    source_dir = os.path.normpath(os.path.realpath(b.environment.get_source_dir()))
 
     if not options.quiet:
         print(f'Installing tests to {install_root}')
@@ -114,15 +113,16 @@ def run(options: argparse.Namespace) -> int:
         # Install test executable(s)
         new_fname: T.List[str] = []
         for fname in test.fname:
+            norm_fname = os.path.normpath(os.path.realpath(fname)) if os.path.isabs(fname) else fname
             if _is_under_dir(fname, build_dir):
                 # This is a built executable - copy it to install location
-                rel_path = os.path.relpath(fname, build_dir)
+                rel_path = os.path.relpath(norm_fname, build_dir)
                 dest_path = os.path.join(install_root, rel_path)
                 _copy_file(fname, dest_path, copied_files, options.quiet)
                 new_fname.append(dest_path)
             elif _is_under_dir(fname, source_dir):
                 # Source file (e.g., a test script from source tree)
-                rel_path = os.path.relpath(fname, source_dir)
+                rel_path = os.path.relpath(norm_fname, source_dir)
                 dest_path = os.path.join(install_root, rel_path)
                 _copy_file(fname, dest_path, copied_files, options.quiet)
                 new_fname.append(dest_path)
@@ -134,13 +134,14 @@ def run(options: argparse.Namespace) -> int:
         # Install files referenced in cmd_args
         new_cmd_args: T.List[str] = []
         for arg in test.cmd_args:
+            norm_arg = os.path.normpath(os.path.realpath(arg)) if os.path.isabs(arg) else arg
             if os.path.isabs(arg) and _is_under_dir(arg, build_dir):
-                rel_path = os.path.relpath(arg, build_dir)
+                rel_path = os.path.relpath(norm_arg, build_dir)
                 dest_path = os.path.join(install_root, rel_path)
                 _copy_file(arg, dest_path, copied_files, options.quiet)
                 new_cmd_args.append(dest_path)
             elif os.path.isabs(arg) and _is_under_dir(arg, source_dir):
-                rel_path = os.path.relpath(arg, source_dir)
+                rel_path = os.path.relpath(norm_arg, source_dir)
                 dest_path = os.path.join(install_root, rel_path)
                 _copy_file(arg, dest_path, copied_files, options.quiet)
                 new_cmd_args.append(dest_path)
@@ -160,18 +161,20 @@ def run(options: argparse.Namespace) -> int:
 
         # Rewrite workdir if it points into the build or source dir
         if test.workdir:
+            norm_workdir = os.path.normpath(os.path.realpath(test.workdir))
             if _is_under_dir(test.workdir, build_dir):
-                rel_path = os.path.relpath(test.workdir, build_dir)
+                rel_path = os.path.relpath(norm_workdir, build_dir)
                 new_test.workdir = os.path.join(install_root, rel_path)
             elif _is_under_dir(test.workdir, source_dir):
-                rel_path = os.path.relpath(test.workdir, source_dir)
+                rel_path = os.path.relpath(norm_workdir, source_dir)
                 new_test.workdir = os.path.join(install_root, rel_path)
 
         # Rewrite extra_paths (shared library paths)
         new_extra_paths: T.List[str] = []
         for p in test.extra_paths:
             if _is_under_dir(p, build_dir):
-                rel_path = os.path.relpath(p, build_dir)
+                norm_p = os.path.normpath(os.path.realpath(p))
+                rel_path = os.path.relpath(norm_p, build_dir)
                 dest_path = os.path.join(install_root, rel_path)
                 # Copy all shared libraries from this directory
                 if os.path.isdir(p):
@@ -238,7 +241,9 @@ def _copy_file(src: str, dst: str, copied: T.Set[str], quiet: bool) -> None:
         return
     if not os.path.isfile(src):
         return
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    dst_dir = os.path.dirname(dst)
+    if dst_dir:
+        os.makedirs(dst_dir, exist_ok=True)
     shutil.copy2(src, dst)
     # Preserve executable permissions
     src_mode = os.stat(src).st_mode
@@ -278,14 +283,16 @@ def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source
         for val in values:
             if isinstance(val, str):
                 if _is_under_dir(val, build_dir):
-                    rel = os.path.relpath(val, build_dir)
+                    norm_val = os.path.normpath(os.path.realpath(val))
+                    rel = os.path.relpath(norm_val, build_dir)
                     dest = os.path.join(install_root, rel)
                     # Copy shared libraries if this is a library path variable
                     if name in lib_path_vars and os.path.isdir(val):
                         _copy_shared_libraries(val, dest, copied_files, quiet)
                     val = dest
                 elif _is_under_dir(val, source_dir):
-                    rel = os.path.relpath(val, source_dir)
+                    norm_val = os.path.normpath(os.path.realpath(val))
+                    rel = os.path.relpath(norm_val, source_dir)
                     dest = os.path.join(install_root, rel)
                     if name in lib_path_vars and os.path.isdir(val):
                         _copy_shared_libraries(val, dest, copied_files, quiet)
