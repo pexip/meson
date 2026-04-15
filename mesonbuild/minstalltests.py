@@ -33,6 +33,74 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help='Do not print every file that was installed.')
 
 
+def _build_installed_files_map(
+    wd: str, destdir: str, prefix: str
+) -> T.Dict[str, str]:
+    """Build a mapping from normalized build-dir file paths to their
+    installed locations (DESTDIR + prefix + outdir + basename).
+
+    This lets us know which files are already installed by the normal
+    ``meson install`` step so we can reference them in-place instead of
+    copying them again into the test install directory.
+    """
+    install_dat = os.path.join(wd, 'meson-private', 'install.dat')
+    if not os.path.isfile(install_dat):
+        return {}
+
+    from .minstall import load_install_data
+    from .scripts import destdir_join
+    d = load_install_data(install_dat)
+
+    fullprefix = destdir_join(destdir, d.prefix) if destdir else d.prefix
+
+    mapping: T.Dict[str, str] = {}
+    for t in d.targets:
+        src = os.path.normpath(os.path.realpath(t.fname))
+        if os.path.isabs(t.outdir):
+            outdir = t.outdir
+        else:
+            outdir = os.path.join(fullprefix, t.outdir)
+        installed_path = os.path.join(outdir, os.path.basename(t.fname))
+        mapping[src] = installed_path
+    return mapping
+
+
+def _resolve_lib_dir_installed_path(
+    lib_dir: str, installed_files: T.Dict[str, str]
+) -> T.Optional[str]:
+    """If every shared library in *lib_dir* is already covered by the
+    normal install (present in *installed_files*) AND they all go to the
+    same install directory, return that directory.  Otherwise return
+    ``None``, meaning some libraries need to be copied into the test
+    install tree.
+    """
+    if not os.path.isdir(lib_dir):
+        return None
+
+    install_dirs: T.Set[str] = set()
+    has_libs = False
+
+    for entry in os.listdir(lib_dir):
+        src_path = os.path.join(lib_dir, entry)
+        if (os.path.isfile(src_path) or os.path.islink(src_path)) and _is_shared_library(entry):
+            has_libs = True
+            norm = os.path.normpath(os.path.realpath(src_path))
+            installed = installed_files.get(norm)
+            if installed is None:
+                # This lib is NOT installed by `meson install` → must copy
+                return None
+            install_dirs.add(os.path.dirname(installed))
+
+    if not has_libs:
+        return None
+
+    if len(install_dirs) == 1:
+        return install_dirs.pop()
+
+    # Libs go to different directories – caller should copy them
+    return None
+
+
 def run(options: argparse.Namespace) -> int:
     from . import tooldetect
 
@@ -90,6 +158,11 @@ def run(options: argparse.Namespace) -> int:
     build_dir = os.path.normpath(os.path.realpath(b.environment.get_build_dir()))
     source_dir = os.path.normpath(os.path.realpath(b.environment.get_source_dir()))
 
+    # Build a mapping of files already installed by `meson install` so that
+    # we can reference them in-place and avoid duplicating shared libraries
+    # into the test install directory.
+    installed_files = _build_installed_files_map(options.wd, destdir, prefix)
+
     if not options.quiet:
         print(f'Installing tests to {install_root}')
 
@@ -115,11 +188,17 @@ def run(options: argparse.Namespace) -> int:
         for fname in test.fname:
             norm_fname = os.path.normpath(os.path.realpath(fname)) if os.path.isabs(fname) else fname
             if _is_under_dir(fname, build_dir):
-                # This is a built executable - copy it to install location
-                rel_path = os.path.relpath(norm_fname, build_dir)
-                dest_path = os.path.join(install_root, rel_path)
-                _copy_file(fname, dest_path, copied_files, options.quiet)
-                new_fname.append(dest_path)
+                # Check if this file is already installed by meson install
+                already_installed = installed_files.get(norm_fname)
+                if already_installed:
+                    # Use the already-installed path (don't copy again)
+                    new_fname.append(already_installed)
+                else:
+                    # This is a test-only executable - copy it to install location
+                    rel_path = os.path.relpath(norm_fname, build_dir)
+                    dest_path = os.path.join(install_root, rel_path)
+                    _copy_file(fname, dest_path, copied_files, options.quiet)
+                    new_fname.append(dest_path)
             elif _is_under_dir(fname, source_dir):
                 # Source file (e.g., a test script from source tree)
                 rel_path = os.path.relpath(norm_fname, source_dir)
@@ -136,10 +215,14 @@ def run(options: argparse.Namespace) -> int:
         for arg in test.cmd_args:
             norm_arg = os.path.normpath(os.path.realpath(arg)) if os.path.isabs(arg) else arg
             if os.path.isabs(arg) and _is_under_dir(arg, build_dir):
-                rel_path = os.path.relpath(norm_arg, build_dir)
-                dest_path = os.path.join(install_root, rel_path)
-                _copy_file(arg, dest_path, copied_files, options.quiet)
-                new_cmd_args.append(dest_path)
+                already_installed = installed_files.get(norm_arg)
+                if already_installed:
+                    new_cmd_args.append(already_installed)
+                else:
+                    rel_path = os.path.relpath(norm_arg, build_dir)
+                    dest_path = os.path.join(install_root, rel_path)
+                    _copy_file(arg, dest_path, copied_files, options.quiet)
+                    new_cmd_args.append(dest_path)
             elif os.path.isabs(arg) and _is_under_dir(arg, source_dir):
                 rel_path = os.path.relpath(norm_arg, source_dir)
                 dest_path = os.path.join(install_root, rel_path)
@@ -169,26 +252,33 @@ def run(options: argparse.Namespace) -> int:
                 rel_path = os.path.relpath(norm_workdir, source_dir)
                 new_test.workdir = os.path.join(install_root, rel_path)
 
-        # Rewrite extra_paths (shared library paths)
+        # Rewrite extra_paths (shared library paths).
+        # If every library in a directory is already installed by
+        # `meson install`, point to the installed location instead of
+        # copying.  Otherwise fall back to copying into the test tree.
         new_extra_paths: T.List[str] = []
         for p in test.extra_paths:
             if _is_under_dir(p, build_dir):
-                norm_p = os.path.normpath(os.path.realpath(p))
-                rel_path = os.path.relpath(norm_p, build_dir)
-                dest_path = os.path.join(install_root, rel_path)
-                # Copy all shared libraries from this directory
-                if os.path.isdir(p):
-                    _copy_directory_contents(p, dest_path, copied_files, options.quiet)
-                new_extra_paths.append(dest_path)
+                redirect = _resolve_lib_dir_installed_path(p, installed_files)
+                if redirect is not None:
+                    new_extra_paths.append(redirect)
+                else:
+                    norm_p = os.path.normpath(os.path.realpath(p))
+                    rel_path = os.path.relpath(norm_p, build_dir)
+                    dest_path = os.path.join(install_root, rel_path)
+                    if os.path.isdir(p):
+                        _copy_directory_contents(p, dest_path, copied_files,
+                                                 options.quiet, installed_files)
+                    new_extra_paths.append(dest_path)
             else:
                 new_extra_paths.append(p)
         new_test.extra_paths = new_extra_paths
 
         # Rewrite LD_LIBRARY_PATH / DYLD_LIBRARY_PATH entries in env, and
-        # copy shared libraries from those directories
+        # copy shared libraries from those directories (only test-only ones)
         new_env = copy.deepcopy(test.env)
         _rewrite_env_paths(new_env, build_dir, source_dir, install_root,
-                           copied_files, options.quiet)
+                           copied_files, options.quiet, installed_files)
         new_test.env = new_env
 
         installed_tests.append(new_test)
@@ -253,8 +343,10 @@ def _copy_file(src: str, dst: str, copied: T.Set[str], quiet: bool) -> None:
         print(f'Installing {os.path.basename(src)} to {os.path.dirname(dst)}')
 
 
-def _copy_directory_contents(src_dir: str, dst_dir: str, copied: T.Set[str], quiet: bool) -> None:
-    """Copy all files from src_dir to dst_dir."""
+def _copy_directory_contents(src_dir: str, dst_dir: str, copied: T.Set[str], quiet: bool,
+                             installed_files: T.Optional[T.Dict[str, str]] = None) -> None:
+    """Copy files from src_dir to dst_dir, skipping files that are already
+    installed by ``meson install`` (present in *installed_files*)."""
     if not os.path.isdir(src_dir):
         return
     os.makedirs(dst_dir, exist_ok=True)
@@ -262,19 +354,27 @@ def _copy_directory_contents(src_dir: str, dst_dir: str, copied: T.Set[str], qui
         src_path = os.path.join(src_dir, entry)
         dst_path = os.path.join(dst_dir, entry)
         if os.path.isfile(src_path):
+            # Skip files already installed by meson install
+            if installed_files is not None:
+                norm = os.path.normpath(os.path.realpath(src_path))
+                if norm in installed_files:
+                    continue
             _copy_file(src_path, dst_path, copied, quiet)
         elif os.path.isdir(src_path):
-            _copy_directory_contents(src_path, dst_path, copied, quiet)
+            _copy_directory_contents(src_path, dst_path, copied, quiet, installed_files)
 
 
 def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source_dir: str,
-                       install_root: str, copied_files: T.Set[str], quiet: bool) -> None:
+                       install_root: str, copied_files: T.Set[str], quiet: bool,
+                       installed_files: T.Optional[T.Dict[str, str]] = None) -> None:
     """Rewrite paths in environment variables that point to build/source dirs.
 
     EnvironmentVariables stores operations as a list of tuples:
         (method, name, values, separator)
     where values is a list of strings. We rewrite any paths in those values.
-    For library path variables, we also copy the library files.
+    For library path variables, if the libraries are already installed by
+    ``meson install``, point to the installed location instead of copying.
+    Otherwise, copy only test-only libraries.
     """
     lib_path_vars = {'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH'}
     new_envvars = []
@@ -283,32 +383,50 @@ def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source
         for val in values:
             if isinstance(val, str):
                 if _is_under_dir(val, build_dir):
+                    # For library path variables, check if the libs are
+                    # already installed and redirect there
+                    if name in lib_path_vars and installed_files is not None:
+                        redirect = _resolve_lib_dir_installed_path(val, installed_files)
+                        if redirect is not None:
+                            val = redirect
+                            new_values.append(val)
+                            continue
+
                     norm_val = os.path.normpath(os.path.realpath(val))
                     rel = os.path.relpath(norm_val, build_dir)
                     dest = os.path.join(install_root, rel)
                     # Copy shared libraries if this is a library path variable
                     if name in lib_path_vars and os.path.isdir(val):
-                        _copy_shared_libraries(val, dest, copied_files, quiet)
+                        _copy_shared_libraries(val, dest, copied_files, quiet,
+                                               installed_files)
                     val = dest
                 elif _is_under_dir(val, source_dir):
                     norm_val = os.path.normpath(os.path.realpath(val))
                     rel = os.path.relpath(norm_val, source_dir)
                     dest = os.path.join(install_root, rel)
                     if name in lib_path_vars and os.path.isdir(val):
-                        _copy_shared_libraries(val, dest, copied_files, quiet)
+                        _copy_shared_libraries(val, dest, copied_files, quiet,
+                                               installed_files)
                     val = dest
             new_values.append(val)
         new_envvars.append((method, name, new_values, separator))
     env.envvars = new_envvars
 
 
-def _copy_shared_libraries(src_dir: str, dst_dir: str, copied: T.Set[str], quiet: bool) -> None:
-    """Copy shared library files from src_dir to dst_dir."""
+def _copy_shared_libraries(src_dir: str, dst_dir: str, copied: T.Set[str], quiet: bool,
+                           installed_files: T.Optional[T.Dict[str, str]] = None) -> None:
+    """Copy shared library files from src_dir to dst_dir, skipping
+    libraries that are already installed by ``meson install``."""
     if not os.path.isdir(src_dir):
         return
     os.makedirs(dst_dir, exist_ok=True)
     for entry in os.listdir(src_dir):
         src_path = os.path.join(src_dir, entry)
+        # Skip files already installed by meson install
+        if installed_files is not None:
+            norm = os.path.normpath(os.path.realpath(src_path))
+            if norm in installed_files:
+                continue
         if os.path.isfile(src_path) and _is_shared_library(entry):
             dst_path = os.path.join(dst_dir, entry)
             _copy_file(src_path, dst_path, copied, quiet)
