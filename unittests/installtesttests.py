@@ -253,6 +253,98 @@ class InternalInstallTestsTests(BasePlatformTests):
         self.assertEqual(name, 'MY_VAR')
         self.assertEqual(values, ['/usr/bin/python3'])
 
+    def test_rewrite_env_paths_prefix_path_replaced(self):
+        """Test _rewrite_env_paths rewrites paths under the install prefix
+        to use @@INSTALLPREFIX@@ placeholder."""
+        build_dir = '/build'
+        source_dir = '/source'
+        install_root = '/install'
+        prefix = '/usr'
+
+        env = EnvironmentVariables()
+        env.set('PEX_TESTS_DATA_PATH', ['/usr/share/pexip/test-data'])
+
+        copied: T.Set[str] = set()
+        _rewrite_env_paths(env, build_dir, source_dir, install_root, copied,
+                           quiet=True, prefix=prefix)
+
+        self.assertEqual(len(env.envvars), 1)
+        method, name, values, sep = env.envvars[0]
+        self.assertEqual(name, 'PEX_TESTS_DATA_PATH')
+        self.assertEqual(values, [os.path.join(INSTALL_PREFIX_PLACEHOLDER,
+                                               'share', 'pexip', 'test-data')])
+
+    def test_rewrite_env_paths_prefix_multiple_vars(self):
+        """Test _rewrite_env_paths rewrites multiple env vars with prefix paths."""
+        build_dir = '/build'
+        source_dir = '/source'
+        install_root = '/install'
+        prefix = '/usr'
+
+        env = EnvironmentVariables()
+        env.set('DATA_DIR', ['/usr/share/myproject/data'])
+        env.set('CONFIG_DIR', ['/usr/etc/myproject'])
+        env.set('EXTERNAL_VAR', ['/opt/external/path'])
+
+        copied: T.Set[str] = set()
+        _rewrite_env_paths(env, build_dir, source_dir, install_root, copied,
+                           quiet=True, prefix=prefix)
+
+        self.assertEqual(len(env.envvars), 3)
+
+        # DATA_DIR should be rewritten with prefix placeholder
+        _, name, values, _ = env.envvars[0]
+        self.assertEqual(name, 'DATA_DIR')
+        self.assertEqual(values, [os.path.join(INSTALL_PREFIX_PLACEHOLDER,
+                                               'share', 'myproject', 'data')])
+
+        # CONFIG_DIR should be rewritten with prefix placeholder
+        _, name, values, _ = env.envvars[1]
+        self.assertEqual(name, 'CONFIG_DIR')
+        self.assertEqual(values, [os.path.join(INSTALL_PREFIX_PLACEHOLDER,
+                                               'etc', 'myproject')])
+
+        # EXTERNAL_VAR should remain unchanged (not under prefix)
+        _, name, values, _ = env.envvars[2]
+        self.assertEqual(name, 'EXTERNAL_VAR')
+        self.assertEqual(values, ['/opt/external/path'])
+
+    def test_rewrite_env_paths_prefix_not_passed(self):
+        """Test _rewrite_env_paths leaves prefix paths unchanged when
+        no prefix is provided (backward compatibility)."""
+        build_dir = '/build'
+        source_dir = '/source'
+        install_root = '/install'
+
+        env = EnvironmentVariables()
+        env.set('DATA_DIR', ['/usr/share/myproject/data'])
+
+        copied: T.Set[str] = set()
+        _rewrite_env_paths(env, build_dir, source_dir, install_root, copied,
+                           quiet=True)
+        # No prefix passed → path should remain unchanged
+        _, name, values, _ = env.envvars[0]
+        self.assertEqual(name, 'DATA_DIR')
+        self.assertEqual(values, ['/usr/share/myproject/data'])
+
+    def test_rewrite_env_paths_prefix_exact_match(self):
+        """Test _rewrite_env_paths rewrites a value that equals the prefix exactly."""
+        build_dir = '/build'
+        source_dir = '/source'
+        install_root = '/install'
+        prefix = '/usr'
+
+        env = EnvironmentVariables()
+        env.set('PREFIX_DIR', ['/usr'])
+
+        copied: T.Set[str] = set()
+        _rewrite_env_paths(env, build_dir, source_dir, install_root, copied,
+                           quiet=True, prefix=prefix)
+
+        _, name, values, _ = env.envvars[0]
+        self.assertEqual(name, 'PREFIX_DIR')
+        self.assertEqual(values, [os.path.join(INSTALL_PREFIX_PLACEHOLDER, '.')])
+
 
 class InstallTestsCommandTests(BasePlatformTests):
     """Integration tests for 'meson install --install-tests'."""
@@ -938,3 +1030,59 @@ class InstallTestsCommandTests(BasePlatformTests):
         cmd = self.meson_command + ['test', '-C', relocated_tests]
         result = self._run(cmd)
         self.assertIn('OK', result)
+
+    def test_install_tests_no_hardcoded_prefix_in_fname(self):
+        """Test that serialized test data uses relocatable placeholders and
+        never hardcodes absolute install paths in fname, cmd_args, extra_paths,
+        or environment variables.
+
+        This covers the scenario where install directories might be absolute
+        (e.g. via install_dir: '/opt/mybin') which previously caused
+        os.path.join to silently drop the @@INSTALLPREFIX@@ placeholder.
+        """
+        testdir = os.path.join(self.common_test_dir, '287 install tests shared lib')
+        self.init(testdir)
+        self.build()
+
+        destdir = os.path.join(self.builddir, 'install-tests-dest')
+        self._install_tests(destdir=destdir)
+        install_root = self._get_installed_test_dir(destdir)
+
+        # Load the RAW installed pickle (without resolving placeholders)
+        test_data = os.path.join(install_root, 'meson-private', 'meson_test_setup.dat')
+        with open(test_data, 'rb') as f:
+            tests = pickle.load(f)
+
+        from mesonbuild.minstalltests import (
+            INSTALLED_TESTS_DIR_PLACEHOLDER,
+            INSTALL_PREFIX_PLACEHOLDER,
+        )
+
+        for test in tests:
+            # Every absolute-looking fname should use a placeholder
+            for fname in test.fname:
+                if os.path.isabs(fname):
+                    self.fail(
+                        f'Test {test.name!r} has hardcoded absolute path in fname: {fname!r}. '
+                        f'Expected a relocatable placeholder (@@INSTALLEDTESTSDIR@@ or @@INSTALLPREFIX@@).'
+                    )
+            # Same for cmd_args
+            for arg in test.cmd_args:
+                if os.path.isabs(arg):
+                    self.fail(
+                        f'Test {test.name!r} has hardcoded absolute path in cmd_args: {arg!r}.'
+                    )
+            # Same for extra_paths
+            for p in test.extra_paths:
+                if os.path.isabs(p):
+                    self.fail(
+                        f'Test {test.name!r} has hardcoded absolute path in extra_paths: {p!r}.'
+                    )
+            # Same for env var values
+            for method, name, values, sep in test.env.envvars:
+                for val in values:
+                    if isinstance(val, str) and os.path.isabs(val):
+                        self.fail(
+                            f'Test {test.name!r} has hardcoded absolute path in env var '
+                            f'{name!r}: {val!r}.'
+                        )

@@ -64,8 +64,19 @@ def _build_installed_files_map(
     mapping: T.Dict[str, str] = {}
     for t in d.targets:
         src = os.path.normpath(os.path.realpath(t.fname))
-        # outdir is relative to prefix (e.g. "lib" or "bin")
-        rel_installed = os.path.join(t.outdir, os.path.basename(t.fname))
+        outdir = t.outdir
+        # outdir may be absolute when the user sets an absolute install_dir
+        # (e.g. install_dir: '/opt/mylibs').  If it starts with the prefix,
+        # strip the prefix to make it relative; otherwise keep it absolute
+        # (the caller will handle it).
+        if os.path.isabs(outdir):
+            try:
+                outdir = os.path.relpath(outdir, d.prefix)
+            except ValueError:
+                # On Windows, relpath raises ValueError if paths are on
+                # different drives.  Keep the absolute path in that case.
+                pass
+        rel_installed = os.path.join(outdir, os.path.basename(t.fname))
         mapping[src] = rel_installed
     return mapping
 
@@ -183,6 +194,13 @@ def run(options: argparse.Namespace) -> int:
     # Helper: produce a relocatable placeholder path for a file that is
     # already installed by `meson install` under the main prefix.
     def _prefix_placeholder(rel: str) -> str:
+        if os.path.isabs(rel):
+            # Safety: if rel is somehow still absolute, strip the prefix
+            # to avoid os.path.join silently dropping the placeholder.
+            try:
+                rel = os.path.relpath(rel, prefix)
+            except ValueError:
+                pass
         return os.path.join(INSTALL_PREFIX_PLACEHOLDER, rel)
 
     if not options.quiet:
@@ -304,7 +322,8 @@ def run(options: argparse.Namespace) -> int:
         # copy shared libraries from those directories (only test-only ones)
         new_env = copy.deepcopy(test.env)
         _rewrite_env_paths(new_env, build_dir, source_dir, install_root,
-                           copied_files, options.quiet, installed_files)
+                           copied_files, options.quiet, installed_files,
+                           prefix=prefix)
         new_test.env = new_env
 
         installed_tests.append(new_test)
@@ -478,8 +497,10 @@ def _copy_directory_contents(src_dir: str, dst_dir: str, copied: T.Set[str], qui
 
 def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source_dir: str,
                        install_root: str, copied_files: T.Set[str], quiet: bool,
-                       installed_files: T.Optional[T.Dict[str, str]] = None) -> None:
-    """Rewrite paths in environment variables that point to build/source dirs.
+                       installed_files: T.Optional[T.Dict[str, str]] = None,
+                       prefix: T.Optional[str] = None) -> None:
+    """Rewrite paths in environment variables that point to build/source dirs
+    or the install prefix.
 
     EnvironmentVariables stores operations as a list of tuples:
         (method, name, values, separator)
@@ -487,6 +508,10 @@ def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source
     For library path variables, if the libraries are already installed by
     ``meson install``, point to the installed location via a relocatable
     placeholder instead of copying.  Otherwise, copy only test-only libraries.
+
+    Paths under the install *prefix* (e.g. ``/usr/share/myproject/data``) are
+    rewritten to ``@@INSTALLPREFIX@@/share/myproject/data`` so that the tests
+    remain relocatable.
     """
     # On Windows, DLLs are found via PATH (not LD_LIBRARY_PATH).
     lib_path_vars = {'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'PATH'}
@@ -521,6 +546,18 @@ def _rewrite_env_paths(env: 'build.EnvironmentVariables', build_dir: str, source
                         _copy_shared_libraries(val, dest, copied_files, quiet,
                                                installed_files)
                     val = os.path.join(INSTALLED_TESTS_DIR_PLACEHOLDER, rel)
+                elif prefix and _is_under_dir(val, prefix):
+                    # Path under the install prefix (e.g. a data directory
+                    # like /usr/share/myproject/test-data).  Make it
+                    # relocatable via the prefix placeholder.
+                    norm_val = os.path.normpath(os.path.realpath(val))
+                    norm_prefix = os.path.normpath(os.path.realpath(prefix))
+                    try:
+                        rel = os.path.relpath(norm_val, norm_prefix)
+                    except ValueError:
+                        rel = None
+                    if rel is not None:
+                        val = os.path.join(INSTALL_PREFIX_PLACEHOLDER, rel)
             new_values.append(val)
         new_envvars.append((method, name, new_values, separator))
     env.envvars = new_envvars
