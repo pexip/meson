@@ -342,6 +342,7 @@ def resolve_installed_test_placeholders(
     tests: T.List[TestSerialisation],
     tests_dir: str,
     marker_path: str,
+    prefix_override: T.Optional[str] = None,
 ) -> None:
     """Resolve ``@@INSTALLEDTESTSDIR@@`` and ``@@INSTALLPREFIX@@``
     placeholders in *tests* **in-place**.
@@ -349,6 +350,10 @@ def resolve_installed_test_placeholders(
     *tests_dir* is the directory passed via ``meson test -C``.
     *marker_path* is the path to the ``installed-tests.marker`` file
     (must exist).
+    *prefix_override*, when given, is used as the install prefix instead
+    of deriving it from the marker contents.  This is useful when the
+    installed test tree has been moved to a system whose layout differs
+    from the original build (``meson test --test-prefix /actual/prefix``).
 
     The install prefix is derived from the marker contents::
 
@@ -357,21 +362,24 @@ def resolve_installed_test_placeholders(
     """
     tests_dir = os.path.normpath(os.path.realpath(tests_dir))
 
-    # Read tests_subdir from the marker file to compute the prefix
-    tests_subdir = 'tests'
-    with open(marker_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith('tests_subdir='):
-                tests_subdir = line.split('=', 1)[1]
-                break
+    if prefix_override is not None:
+        prefix_dir = os.path.normpath(os.path.realpath(prefix_override))
+    else:
+        # Read tests_subdir from the marker file to compute the prefix
+        tests_subdir = 'tests'
+        with open(marker_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('tests_subdir='):
+                    tests_subdir = line.split('=', 1)[1]
+                    break
 
-    # prefix_dir = tests_dir stripped of tests_subdir at the end
-    # e.g. /install/usr/tests → /install/usr  (if tests_subdir == "tests")
-    from pathlib import PurePath
-    prefix_dir = tests_dir
-    for _ in PurePath(tests_subdir).parts:
-        prefix_dir = os.path.dirname(prefix_dir)
+        # prefix_dir = tests_dir stripped of tests_subdir at the end
+        # e.g. /install/usr/tests → /install/usr  (if tests_subdir == "tests")
+        from pathlib import PurePath
+        prefix_dir = tests_dir
+        for _ in PurePath(tests_subdir).parts:
+            prefix_dir = os.path.dirname(prefix_dir)
 
     def _resolve(s: str) -> str:
         if s.startswith(INSTALLED_TESTS_DIR_PLACEHOLDER):

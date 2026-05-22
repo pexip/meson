@@ -173,6 +173,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help='Maximum number of lines to show from a long test log. Since 1.5.0.')
     parser.add_argument('--slice', default=None, type=test_slice, metavar='SLICE/NUM_SLICES',
                         help='Split tests into NUM_SLICES slices and execute slice SLICE. Since 1.8.0.')
+    parser.add_argument('--test-prefix', default=None, dest='test_prefix',
+                        help='Override the install prefix used to resolve '
+                        'paths when running installed tests (see --install-tests). '
+                        'Useful when the installed test tree has been moved to '
+                        'a system whose layout differs from the original build.')
     parser.add_argument('args', nargs='*',
                         help='Optional list of test names to run. "testname" to run all tests with that name, '
                         '"subprojname:testname" to specifically run "testname" from "subprojname", '
@@ -1752,8 +1757,10 @@ class TestHarness:
         marker = Path('meson-private') / 'installed-tests.marker'
         if marker.is_file():
             from .minstalltests import resolve_installed_test_placeholders
+            prefix_override = getattr(self.options, 'test_prefix', None)
             resolve_installed_test_placeholders(
-                objs, self.options.wd, str(marker))
+                objs, self.options.wd, str(marker),
+                prefix_override=prefix_override)
 
         return objs
 
