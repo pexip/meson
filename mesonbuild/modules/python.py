@@ -480,7 +480,9 @@ class PythonModule(ExtensionModule):
         python_version = PythonModule._get_python_version(python_cmd)
         is_python3 = python_version is not None and python_version.startswith('3')
         if is_python3 and is_debug:
-            return os.path.join(python_path, 'python_d')
+            python_d = os.path.join(python_path, 'python_d')
+            if os.path.exists(python_d + '.exe') or os.path.exists(python_d):
+                return python_d
 
         return os.path.join(python_path, 'python')
 

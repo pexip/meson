@@ -405,7 +405,12 @@ class _PythonDependencyBase(_Base):
                             type or a debug Python interpreter.
                             '''))
 
-                    suffix = f'_d' if self.major_version == 3 and buildtype == 'debug' else ''
+                    suffix = ''
+                    if self.major_version == 3 and buildtype == 'debug':
+                        debug_libpath = Path('libs') / f'python{vernum}_d{"t" if self.is_freethreaded else ""}.lib'
+                        debug_lib = Path(self.variables.get('base_prefix')) / debug_libpath
+                        if debug_lib.exists():
+                            suffix = '_d'
                     if self.is_freethreaded:
                         libpath = Path('libs') / f'python{vernum}{suffix}t.lib'
                     else:
