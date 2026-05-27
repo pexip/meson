@@ -165,6 +165,75 @@ class PythonInstallation(_ExternalProgramHolder['PythonExternalProgram']):
             FeatureNew.single_use('python_installation.extension_module with implicit dependency on python',
                                   '0.63.0', self.subproject, 'use python_installation.dependency()',
                                   self.current_node)
+            
+        # CRT-mismatch guard (Windows / MSVC):
+        #
+        # When buildtype=debug, Meson defaults the runtime library to /MDd
+        # (debug CRT, links ucrtbased.dll). CPython release builds are linked
+        # against /MD (ucrtbase.dll). Loading a /MDd extension into a /MD
+        # interpreter mixes two C runtimes in the same process, which is
+        # officially unsupported and leads to heap-crossing crashes, mismatched
+        # errno/FILE* state, etc.
+        #
+        # If a true debug Python (python_d.exe + pythonXY_d.lib) is available,
+        # _PythonDependencyBase has already selected it and the link args point
+        # at pythonXY_d.lib -- in that case we keep /MDd. Otherwise we force
+        # this extension module to be built with the release CRT, matching what
+        # setuptools does (it always builds extensions with /MD regardless of
+        # how the host CPython was configured). Pure-native targets in the same
+        # project that do not link Python keep the project-wide /MDd, so the
+        # user's debug experience for non-Python code is preserved.
+        for_machine = kwargs['native']
+        if (self.interpreter.environment.machines[for_machine].is_windows()
+                and getattr(pydep, 'use_debug_python', False) is False):
+            buildtype = self.interpreter.environment.coredata.optstore.get_value_for(
+                OptionKey('buildtype'))
+            vscrt = None
+            if OptionKey('b_vscrt') in self.interpreter.environment.coredata.optstore:
+                vscrt = self.interpreter.environment.coredata.optstore.get_value_for(
+                    OptionKey('b_vscrt'))
+            debug_crt = (
+                vscrt in {'mdd', 'mtd'}
+                or (vscrt in {None, 'from_buildtype', 'static_from_buildtype'}
+                    and buildtype == 'debug')
+            )
+            if debug_crt:
+                compilers = self.interpreter.environment.coredata.compilers[for_machine]
+                is_msvc = any(c.get_id() in {'msvc', 'clang-cl'} for c in compilers.values())
+                if is_msvc:
+                    # Override the inherited /MDd with /MD on this target. MSVC
+                    # honours the last /M? flag and emits warning D9025, which
+                    # we accept as the lesser evil over a CRT mismatch at run
+                    # time. Also stop the debug CRT from being pulled in via
+                    # default libs from object files that were already compiled
+                    # with /MDd in dependent static libs (best-effort).
+                    crt_override = ['/MD']
+                    crt_link_override = [
+                        '/NODEFAULTLIB:msvcrtd.lib',
+                        '/NODEFAULTLIB:libcmtd.lib',
+                        '/NODEFAULTLIB:ucrtd.lib',
+                        '/NODEFAULTLIB:vcruntimed.lib',
+                    ]
+                    new_c_args = mesonlib.extract_as_list(kwargs, 'c_args')
+                    new_c_args += crt_override
+                    kwargs['c_args'] = new_c_args
+
+                    new_cpp_args = mesonlib.extract_as_list(kwargs, 'cpp_args')
+                    new_cpp_args += crt_override
+                    kwargs['cpp_args'] = new_cpp_args
+
+                    new_link_args = mesonlib.extract_as_list(kwargs, 'link_args')
+                    new_link_args += crt_link_override
+                    kwargs['link_args'] = new_link_args
+
+                    mlog.warning(
+                        'python.extension_module: buildtype=debug but no debug '
+                        'Python (python_d.exe / pythonXY_d.lib) was found. '
+                        'Forcing /MD on this extension module to match the '
+                        'release CPython CRT. Native code in this module will '
+                        'not be linked against the debug CRT; the rest of the '
+                        'project is unaffected. Install the python.org debug '
+                        'binaries (Include_debug=1) to get a fully-debug build.')
 
         limited_api_version = kwargs.pop('limited_api')
         allow_limited_api = self.interpreter.environment.coredata.optstore.get_value_for(OptionKey('python.allow_limited_api'))
@@ -441,50 +510,22 @@ class PythonModule(ExtensionModule):
     def postconf_hook(self, b: Build) -> None:
         b.install_scripts.extend(self._get_install_scripts())
 
-    @staticmethod
-    def _execute_cmd(cmd):
-        _, stdout, _ = mesonlib.Popen_safe(cmd)
-        return stdout.strip()
-
-    @staticmethod
-    def _get_python_path (py_cmd):
-        return PythonModule._execute_cmd(py_cmd + ['-c', "import sysconfig; print(sysconfig.get_config_var('BINDIR'))"])
-
-    @staticmethod
-    def _get_python_version(py_cmd):
-        return PythonModule._execute_cmd(py_cmd + ["-c", "import platform; print(platform.python_version())"])
-
     # https://www.python.org/dev/peps/pep-0397/
     @staticmethod
-    def _get_win_pythonpath(name_or_path: str, is_debug: bool) -> T.Optional[str]:
+    def _get_win_pythonpath(name_or_path: str) -> T.Optional[str]:
+        if not name_or_path.startswith(('python2', 'python3')):
+            return None
         if not shutil.which('py'):
             # program not installed, return without an exception
             return None
-
-        is_py = name_or_path.endswith('py.exe')
-        if not is_py and name_or_path not in ['python2', 'python3']:
-            return None
-
-        python_cmd = None
-        if is_py:
-            # use py's default version
-            python_cmd = ['py']
+        ver = f'-{name_or_path[6:]}'
+        cmd = ['py', ver, '-c', "import sysconfig; print(sysconfig.get_config_var('BINDIR'))"]
+        _, stdout, _ = mesonlib.Popen_safe(cmd)
+        directory = stdout.strip()
+        if os.path.exists(directory):
+            return os.path.join(directory, 'python')
         else:
-            ver = {'python2': '-2', 'python3': '-3'}[name_or_path]
-            python_cmd = ['py', ver]
-
-        python_path = PythonModule._get_python_path(python_cmd)
-        if not os.path.exists(python_path):
             return None
-
-        python_version = PythonModule._get_python_version(python_cmd)
-        is_python3 = python_version is not None and python_version.startswith('3')
-        if is_python3 and is_debug:
-            python_d = os.path.join(python_path, 'python_d')
-            if os.path.exists(python_d + '.exe') or os.path.exists(python_d):
-                return python_d
-
-        return os.path.join(python_path, 'python')
 
     def _find_installation_impl(self, state: 'ModuleState', display_name: str, name_or_path: str, required: bool) -> MaybePythonProg:
         build_config = self.interpreter.environment.coredata.optstore.get_value_for(OptionKey('python.build_config'))
@@ -495,10 +536,8 @@ class PythonModule(ExtensionModule):
             tmp_python = ExternalProgram.from_entry(display_name, name_or_path)
             python = PythonExternalProgram(display_name, ext_prog=tmp_python, build_config_path=build_config)
 
-            if mesonlib.is_windows():
-                is_debug = self.interpreter.environment.coredata.optstore.get_value_for(OptionKey('buildtype')) == 'debug'
-                pythonpath = self._get_win_pythonpath(name_or_path, is_debug)
-
+            if not python.found() and mesonlib.is_windows():
+                pythonpath = self._get_win_pythonpath(name_or_path)
                 if pythonpath is not None:
                     name_or_path = pythonpath
                     python = PythonExternalProgram(name_or_path)

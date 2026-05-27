@@ -248,6 +248,12 @@ class BasicPythonExternalProgram(ExternalProgram):
 
 class _PythonDependencyBase(_Base):
 
+    # Class-level defaults so these attributes always exist, even if a subclass
+    # exits __init__ early (e.g. PythonPkgConfigDependency when LIBPC is unset)
+    # before _PythonDependencyBase.__init__ has a chance to run.
+    debug_python_available: bool = False
+    use_debug_python: bool = False
+
     def __init__(self, python_holder: 'BasicPythonExternalProgram', embed: bool,
                  for_machine: 'MachineChoice'):
         self.for_machine = for_machine
@@ -290,6 +296,28 @@ class _PythonDependencyBase(_Base):
             self.major_version = 3
         else:
             self.major_version = 2
+
+        # Resolve debug-python availability once, so the interpreter selection
+        # in modules/python.py and the import-library selection in
+        # get_windows_link_args() always agree. On Windows the python.org
+        # installer only ships python_d.exe and pythonXY[t]_d.lib when
+        # "Download debug binaries" (Include_debug=1) was selected at install
+        # time; on most modern CI images those artifacts are absent.
+        if (mesonlib.is_windows()
+                and self.major_version == 3
+                and not self.build_config
+                and self.platform.startswith('win')):
+            base_prefix = self.variables.get('base_prefix')
+            vernum = self.variables.get('py_version_nodot')
+            if base_prefix and vernum:
+                t_suffix = 't' if self.is_freethreaded else ''
+                debug_exe = Path(base_prefix) / 'python_d.exe'
+                debug_lib = Path(base_prefix) / 'libs' / f'python{vernum}_d{t_suffix}.lib'
+                self.debug_python_available = debug_exe.exists() and debug_lib.exists()
+
+        buildtype = self.env.coredata.optstore.get_value_for(OptionKey('buildtype'))
+        assert isinstance(buildtype, str)
+        self.use_debug_python = (buildtype == 'debug') and self.debug_python_available
 
         # pyconfig.h is shared between regular and free-threaded builds in the
         # Windows installer from python.org, and hence does not define
@@ -405,12 +433,9 @@ class _PythonDependencyBase(_Base):
                             type or a debug Python interpreter.
                             '''))
 
-                    suffix = ''
-                    if self.major_version == 3 and buildtype == 'debug':
-                        debug_libpath = Path('libs') / f'python{vernum}_d{"t" if self.is_freethreaded else ""}.lib'
-                        debug_lib = Path(self.variables.get('base_prefix')) / debug_libpath
-                        if debug_lib.exists():
-                            suffix = '_d'
+                    # Used by both interpreter selection AND link-args; resolved
+                    # once in _PythonDependencyBase.__init__.
+                    suffix = '_d' if self.use_debug_python else ''
                     if self.is_freethreaded:
                         libpath = Path('libs') / f'python{vernum}{suffix}t.lib'
                     else:
