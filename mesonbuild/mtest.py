@@ -127,6 +127,10 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('--maxfail', default=0, type=int,
                         help='Number of failing tests before aborting the '
                         'test run. (default: 0, to disable aborting on failure)')
+    parser.add_argument('--max-repeat-on-failure', default=0, type=int, dest='max_repeat_on_failure',
+                        help='Maximum number of times to re-run each failing '
+                        'test after all tests have completed. '
+                        '(default: 0, to disable re-running failed tests)')
     parser.add_argument('--repeat', default=1, dest='repeat', type=int,
                         help='Number of times to run the tests.')
     parser.add_argument('--no-rebuild', default=False, action='store_true',
@@ -2213,6 +2217,34 @@ class TestHarness:
                     break
 
             await complete_all(futures)
+
+            max_repeat_on_failure = self.options.max_repeat_on_failure
+            if max_repeat_on_failure > 0 and self.collected_failures and not interrupted:
+                # Deduplicate: get unique failed tests
+                failed_tests = list(dict.fromkeys(f.test for f in self.collected_failures))
+                for retry in range(max_repeat_on_failure):
+                    if interrupted or not failed_tests:
+                        break
+                    # Track results of this retry round
+                    pre_retry_failure_count = len(self.collected_failures)
+
+                    for test in failed_tests:
+                        if interrupted:
+                            break
+                        retry_runner = self.get_test_runner(test, 0)
+                        if not retry_runner.is_parallel:
+                            await complete_all(futures)
+                        future = asyncio.ensure_future(run_test(retry_runner))
+                        futures.append(future)
+                        running_tests[future] = retry_runner.visible_name
+                        future.add_done_callback(test_done)
+                        if not retry_runner.is_parallel:
+                            await complete(future)
+                    await complete_all(futures)
+                    # Tests that failed again are those that added new entries
+                    # to collected_failures during this retry round
+                    new_failures = self.collected_failures[pre_retry_failure_count:]
+                    failed_tests = list(dict.fromkeys(f.test for f in new_failures))
         finally:
             if sys.platform != 'win32':
                 loop.remove_signal_handler(signal.SIGINT)
