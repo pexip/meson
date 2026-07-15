@@ -1668,6 +1668,11 @@ class TestHarness:
         self.skip_count = 0
         self.ignored_count = 0
         self.timeout_count = 0
+        # Maps the name of a test that failed to the result of that failure,
+        # so that a later re-run of the same test (e.g. with
+        # --max-repeat-on-failure) can undo the bookkeeping of the earlier
+        # failed attempt.
+        self.previous_failure: T.Dict[str, TestResult] = {}
         self.test_count = 0
         self.name_max_len = 0
         self.is_run = False
@@ -1816,6 +1821,23 @@ class TestHarness:
         return SingleTestRunner(test, env, name, options)
 
     def process_test_result(self, result: TestRun) -> None:
+        # A test may be executed more than once: --max-repeat-on-failure
+        # re-runs tests that failed once all tests have completed. If this
+        # test failed on a previous attempt, undo the bookkeeping recorded
+        # for that attempt before accounting for the new result. This happens
+        # regardless of whether the retry passed or failed again - the earlier
+        # failure is always superseded by the latest run.
+        previous = self.previous_failure.pop(result.name, None)
+        if previous is not None:
+            if previous is TestResult.TIMEOUT:
+                self.timeout_count -= 1
+            elif previous is TestResult.UNEXPECTEDPASS:
+                self.unexpectedpass_count -= 1
+            elif previous in {TestResult.FAIL, TestResult.ERROR, TestResult.INTERRUPT}:
+                self.fail_count -= 1
+            self.collected_failures = [f for f in self.collected_failures
+                                       if f.name != result.name]
+
         if result.res is TestResult.TIMEOUT:
             self.timeout_count += 1
         elif result.res is TestResult.SKIP:
@@ -1835,6 +1857,9 @@ class TestHarness:
 
         if result.res.is_bad():
             self.collected_failures.append(result)
+            # Remember this failure so that a later retry can undo the
+            # bookkeeping above if the test eventually passes.
+            self.previous_failure[result.name] = result.res
         for l in self.loggers:
             l.log(self, result)
 
@@ -2220,13 +2245,14 @@ class TestHarness:
 
             max_repeat_on_failure = self.options.max_repeat_on_failure
             if max_repeat_on_failure > 0 and self.collected_failures and not interrupted:
-                # Deduplicate: get unique failed tests
-                failed_tests = list(dict.fromkeys(f.test for f in self.collected_failures))
                 for retry in range(max_repeat_on_failure):
+                    # Only tests that are still failing remain in
+                    # collected_failures: a successful retry removes its entry
+                    # in process_test_result(). Recompute the set to retry
+                    # each round so we narrow down to the tests still failing.
+                    failed_tests = list(dict.fromkeys(f.test for f in self.collected_failures))
                     if interrupted or not failed_tests:
                         break
-                    # Track results of this retry round
-                    pre_retry_failure_count = len(self.collected_failures)
 
                     for test in failed_tests:
                         if interrupted:
@@ -2241,10 +2267,6 @@ class TestHarness:
                         if not retry_runner.is_parallel:
                             await complete(future)
                     await complete_all(futures)
-                    # Tests that failed again are those that added new entries
-                    # to collected_failures during this retry round
-                    new_failures = self.collected_failures[pre_retry_failure_count:]
-                    failed_tests = list(dict.fromkeys(f.test for f in new_failures))
         finally:
             if sys.platform != 'win32':
                 loop.remove_signal_handler(signal.SIGINT)
