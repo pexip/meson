@@ -1676,6 +1676,7 @@ class TestHarness:
         self.loggers.append(self.console_logger)
         self.need_console = False
         self.ninja: T.List[str] = None
+        self.previous_failure: T.Dict[str, TestResult] = {}
 
         self.logfile_base: T.Optional[str] = None
         if self.options.logbase and not self.options.interactive:
@@ -1816,6 +1817,33 @@ class TestHarness:
         return SingleTestRunner(test, env, name, options)
 
     def process_test_result(self, result: TestRun) -> None:
+        # When a test is retried after failure: if the new result is OK,
+        # undo the counter increment from the previous failed attempt.
+        if result.name in self.previous_failure:
+            if result.res.is_ok():
+                prev = self.previous_failure.pop(result.name)
+                if prev is TestResult.TIMEOUT:
+                    self.timeout_count -= 1
+                elif prev is TestResult.UNEXPECTEDPASS:
+                    self.unexpectedpass_count -= 1
+                elif prev in {TestResult.FAIL, TestResult.ERROR, TestResult.INTERRUPT}:
+                    self.fail_count -= 1
+                self.collected_failures = [
+                    f for f in self.collected_failures if f.name != result.name
+                ]
+            else:
+                # Still failing — remove old entry, new one will be added below
+                prev = self.previous_failure.pop(result.name)
+                if prev is TestResult.TIMEOUT:
+                    self.timeout_count -= 1
+                elif prev is TestResult.UNEXPECTEDPASS:
+                    self.unexpectedpass_count -= 1
+                elif prev in {TestResult.FAIL, TestResult.ERROR, TestResult.INTERRUPT}:
+                    self.fail_count -= 1
+                self.collected_failures = [
+                    f for f in self.collected_failures if f.name != result.name
+                ]
+
         if result.res is TestResult.TIMEOUT:
             self.timeout_count += 1
         elif result.res is TestResult.SKIP:
@@ -1835,6 +1863,11 @@ class TestHarness:
 
         if result.res.is_bad():
             self.collected_failures.append(result)
+
+        # Track failures so retries can undo the counter
+        if result.res.is_bad():
+            self.previous_failure[result.name] = result.res
+
         for l in self.loggers:
             l.log(self, result)
 
