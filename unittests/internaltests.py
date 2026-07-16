@@ -1723,6 +1723,104 @@ class InternalTests(unittest.TestCase):
             i = mesonbuild.interpreter.Interpreter(build)
             pickle.dumps(i)
 
+    @staticmethod
+    def _make_bare_test_harness() -> 'mesonbuild.mtest.TestHarness':
+        # Build a TestHarness without running __init__ (which needs a real
+        # build directory) so we can exercise process_test_result() in
+        # isolation.
+        from mesonbuild import mtest
+        th = mtest.TestHarness.__new__(mtest.TestHarness)
+        th.collected_failures = []
+        th.fail_count = 0
+        th.expectedfail_count = 0
+        th.unexpectedpass_count = 0
+        th.success_count = 0
+        th.skip_count = 0
+        th.ignored_count = 0
+        th.timeout_count = 0
+        th.previous_failure = {}
+        th.loggers = []
+        return th
+
+    @staticmethod
+    def _fake_test_result(name: str, res: 'mesonbuild.mtest.TestResult'):
+        result = mock.Mock()
+        result.name = name
+        result.res = res
+        return result
+
+    def test_process_test_result_retry_success_clears_counters(self) -> None:
+        from mesonbuild.mtest import TestResult
+        th = self._make_bare_test_harness()
+
+        th.process_test_result(self._fake_test_result('t', TestResult.FAIL))
+        self.assertEqual(th.fail_count, 1)
+        self.assertEqual(th.total_failure_count(), 1)
+        self.assertEqual([f.name for f in th.collected_failures], ['t'])
+
+        # A successful retry of the same test must undo the failure bookkeeping.
+        th.process_test_result(self._fake_test_result('t', TestResult.OK))
+        self.assertEqual(th.fail_count, 0)
+        self.assertEqual(th.success_count, 1)
+        self.assertEqual(th.total_failure_count(), 0)
+        self.assertEqual(th.collected_failures, [])
+        self.assertEqual(th.previous_failure, {})
+
+    def test_process_test_result_retry_still_failing(self) -> None:
+        from mesonbuild.mtest import TestResult
+        th = self._make_bare_test_harness()
+
+        th.process_test_result(self._fake_test_result('t', TestResult.FAIL))
+        th.process_test_result(self._fake_test_result('t', TestResult.FAIL))
+
+        # A retry that fails again must not double-count the failure.
+        self.assertEqual(th.fail_count, 1)
+        self.assertEqual(th.total_failure_count(), 1)
+        self.assertEqual([f.name for f in th.collected_failures], ['t'])
+        self.assertEqual(set(th.previous_failure), {'t'})
+
+    def test_process_test_result_timeout_then_ok(self) -> None:
+        from mesonbuild.mtest import TestResult
+        th = self._make_bare_test_harness()
+
+        th.process_test_result(self._fake_test_result('t', TestResult.TIMEOUT))
+        self.assertEqual(th.timeout_count, 1)
+        self.assertEqual(th.total_failure_count(), 1)
+
+        th.process_test_result(self._fake_test_result('t', TestResult.OK))
+        self.assertEqual(th.timeout_count, 0)
+        self.assertEqual(th.success_count, 1)
+        self.assertEqual(th.total_failure_count(), 0)
+        self.assertEqual(th.collected_failures, [])
+
+    def test_process_test_result_unexpectedpass_then_ok(self) -> None:
+        from mesonbuild.mtest import TestResult
+        th = self._make_bare_test_harness()
+
+        th.process_test_result(self._fake_test_result('t', TestResult.UNEXPECTEDPASS))
+        self.assertEqual(th.unexpectedpass_count, 1)
+        self.assertEqual(th.total_failure_count(), 1)
+
+        th.process_test_result(self._fake_test_result('t', TestResult.OK))
+        self.assertEqual(th.unexpectedpass_count, 0)
+        self.assertEqual(th.total_failure_count(), 0)
+        self.assertEqual(th.collected_failures, [])
+
+    def test_process_test_result_retry_only_affects_matching_test(self) -> None:
+        from mesonbuild.mtest import TestResult
+        th = self._make_bare_test_harness()
+
+        th.process_test_result(self._fake_test_result('a', TestResult.FAIL))
+        th.process_test_result(self._fake_test_result('b', TestResult.FAIL))
+        self.assertEqual(th.fail_count, 2)
+
+        # Retrying 'a' successfully must not clear the failure of 'b'.
+        th.process_test_result(self._fake_test_result('a', TestResult.OK))
+        self.assertEqual(th.fail_count, 1)
+        self.assertEqual(th.total_failure_count(), 1)
+        self.assertEqual([f.name for f in th.collected_failures], ['b'])
+        self.assertEqual(set(th.previous_failure), {'b'})
+
     def test_major_versions_differ(self) -> None:
         # Return True when going to next major release, when going to dev cycle,
         # when going to rc cycle or when going out of rc cycle.
