@@ -731,14 +731,42 @@ class GnomeModule(ExtensionModule):
         if use_gir_args and self._gir_has_option('--extra-library'):
             def fix_ldflags(ldflags: T.Iterable[T.Union[str, T.Tuple[str, str]]]) -> OrderedSet[T.Union[str, T.Tuple[str, str]]]:
                 fixed_ldflags: OrderedSet[T.Union[str, T.Tuple[str, str]]] = OrderedSet()
+                libdirs = [f[2:] for f in ldflags if isinstance(f, str) and f.startswith('-L')]
                 for ldflag in ldflags:
                     if isinstance(ldflag, str) and ldflag.startswith("-l"):
-                        ldflag = ldflag.replace('-l', '--extra-library=', 1)
+                        ldflag = '--extra-library=' + self._fix_library_prefix(state, ldflag[2:], libdirs)
                     fixed_ldflags.add(ldflag)
                 return fixed_ldflags
             internal_ldflags = fix_ldflags(internal_ldflags)
             external_ldflags = fix_ldflags(external_ldflags)
         return cflags, internal_ldflags, external_ldflags, gi_includes, depends
+
+    @staticmethod
+    def _fix_library_prefix(state: 'ModuleState', libname: str, libdirs: T.List[str]) -> str:
+        """Pick the library stem g-ir-scanner will actually be able to open.
+
+        The scanner links a throwaway probe binary by appending the platform
+        suffix to each --extra-library verbatim.  Unlike a compiler -- see the
+        ['lib', ''] prefix list in compilers/mixins/clike.py -- it never retries
+        with a 'lib' prefix, so a .pc file that says `-lssl` for a library
+        installed as `libssl.lib` links fine as an ordinary target and fails
+        here with `LNK1181: cannot open input file 'ssl.lib'`.
+
+        Only rewrite when the plain name is absent from every search directory
+        and the prefixed one is present, so a correctly named library, a system
+        library and a non-MSVC toolchain are all left alone.
+        """
+        compiler = state.environment.coredata.compilers[MachineChoice.HOST].get('c')
+        if compiler is None or compiler.get_argument_syntax() != 'msvc':
+            return libname
+        prefixed = 'lib' + libname
+        found = False
+        for libdir in libdirs:
+            if os.path.isfile(os.path.join(libdir, libname + '.lib')):
+                return libname
+            found = found or os.path.isfile(os.path.join(libdir, prefixed + '.lib'))
+        return prefixed if found else libname
+
 
     def _get_dependencies_flags(
             self, deps: T.Sequence[T.Union['Dependency', build.BuildTargetTypes]],
