@@ -767,7 +767,6 @@ class GnomeModule(ExtensionModule):
             found = found or os.path.isfile(os.path.join(libdir, prefixed + '.lib'))
         return prefixed if found else libname
 
-
     def _get_dependencies_flags(
             self, deps: T.Sequence[T.Union['Dependency', build.BuildTargetTypes]],
             state: 'ModuleState',
