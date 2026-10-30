@@ -2239,3 +2239,37 @@ class InternalTests(unittest.TestCase):
                 self.assertEqual(actual.compile_args, expected.compile_args)
                 self.assertEqual(actual.link_args, expected.link_args)
                 self.assertEqual(actual.cmake, expected.cmake)
+
+
+class GnomeLibraryPrefixTests(unittest.TestCase):
+    '''Tests for GnomeModule._fix_library_prefix (--extra-library name fixup).'''
+
+    def _state(self, syntax: T.Optional[str]) -> mock.Mock:
+        state = mock.Mock()
+        compilers = {} if syntax is None else {'c': mock.Mock(**{'get_argument_syntax.return_value': syntax})}
+        state.environment.coredata.compilers = {mesonbuild.mesonlib.MachineChoice.HOST: compilers}
+        return state
+
+    def _fix(self, syntax: T.Optional[str], name: str, libdirs: T.List[str], existing: T.Iterable[str] = ()) -> str:
+        files = {os.path.join(*f.split('/')) for f in existing}
+        with mock.patch('os.path.isfile', side_effect=lambda p: p in files):
+            return mesonbuild.modules.gnome.GnomeModule._fix_library_prefix(self._state(syntax), name, libdirs)
+
+    def test_non_msvc_untouched(self):
+        self.assertEqual(self._fix('gcc', 'ssl', ['d'], ['d/libssl.lib']), 'ssl')
+
+    def test_no_c_compiler_untouched(self):
+        self.assertEqual(self._fix(None, 'ssl', ['d'], ['d/libssl.lib']), 'ssl')
+
+    def test_msvc_prefixed_only_is_rewritten(self):
+        self.assertEqual(self._fix('msvc', 'ssl', ['d'], ['d/libssl.lib']), 'libssl')
+
+    def test_msvc_plain_name_present_untouched(self):
+        self.assertEqual(self._fix('msvc', 'ssl', ['d'], ['d/ssl.lib', 'd/libssl.lib']), 'ssl')
+
+    def test_msvc_plain_name_in_later_dir_wins(self):
+        self.assertEqual(self._fix('msvc', 'ssl', ['a', 'b'], ['a/libssl.lib', 'b/ssl.lib']), 'ssl')
+
+    def test_msvc_not_found_or_no_dirs_untouched(self):
+        self.assertEqual(self._fix('msvc', 'ssl', ['d']), 'ssl')
+        self.assertEqual(self._fix('msvc', 'ssl', [], ['d/libssl.lib']), 'ssl')
